@@ -165,3 +165,51 @@ def who_wrote_to(db_path: str, person: str, date_from: Optional[str] = None,
                     f"{rows[0]['sender']} on {rows[0]['date_iso']}."),
         "evidence": evidence,
     }
+
+
+_ADDRESS = re.compile(r"[\w.'+-]+@[\w.-]+")
+
+
+def find_person(db_path: str, name: str, limit: int = 8) -> dict:
+    """Look up the real email addresses in the archive that match a person's name.
+
+    Every word of `name` must appear in the address ("Ken Lay" matches kenneth.lay@enron.com).
+    This is an address lookup, not an email: its `source` is "address-lookup:<name>", it
+    has no `evidence` of the email kind, and it exists so the model never has to guess an
+    address before filtering by sender or recipient.
+    """
+    words = [w.lower() for w in _TOKEN.findall(name or "") if len(w) > 1 or w.isalnum()]
+    if not words:
+        return _cold()
+    like_args = [_like(w) for w in words]
+    cond = " AND ".join(["{c} LIKE ? ESCAPE '\\'"] * len(words))
+    sent: dict = {}
+    got: dict = {}
+    with _connect(db_path) as conn:
+        for r in conn.execute(
+                "SELECT lower(sender) AS a, count(*) AS n FROM emails WHERE "
+                + cond.format(c="sender") + " GROUP BY lower(sender) ORDER BY n DESC LIMIT 50",
+                like_args):
+            sent[r["a"]] = r["n"]
+        for r in conn.execute(
+                "SELECT recipients FROM emails WHERE " + cond.format(c="recipients"),
+                like_args):
+            for a in set(_ADDRESS.findall(r["recipients"].lower())):
+                if all(w in a for w in words):
+                    got[a] = got.get(a, 0) + 1
+    addresses = [a for a in set(sent) | set(got) if all(w in a for w in words)]
+    if not addresses:
+        return _cold()
+    addresses.sort(key=lambda a: (-(sent.get(a, 0) + got.get(a, 0)), a))
+    addresses = addresses[:max(1, min(int(limit), 20))]
+    evidence = [{"address": a, "as_sender": sent.get(a, 0), "as_recipient": got.get(a, 0)}
+                for a in addresses]
+    content = "\n".join(
+        f"{e['address']} | sender in {e['as_sender']} email(s) | recipient in {e['as_recipient']} email(s)"
+        for e in evidence)
+    return {
+        "source": f"address-lookup:{' '.join(words)}",
+        "content": content,
+        "summary": f"Found {len(evidence)} address(es) matching {name!r}; most frequent: {addresses[0]}.",
+        "evidence": evidence,
+    }

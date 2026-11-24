@@ -97,6 +97,26 @@ class EnronToolsTest(unittest.TestCase):
         r = tools.who_wrote_to(self.db, "alice.synthetic@example.test")
         self.assertEqual({e["evidence_id"] for e in r["evidence"]}, {"<fx1@test>", "<fx2@test>"})
 
+    def test_find_person_returns_real_addresses_with_counts(self):
+        r = tools.find_person(self.db, "Alice Synthetic")
+        self.assertEqual(r["evidence"], [
+            {"address": "alice.synthetic@example.test", "as_sender": 1, "as_recipient": 1}])
+        self.assertEqual(r["source"], "address-lookup:alice synthetic")
+        self.assertIn("alice.synthetic@example.test", r["content"])
+
+    def test_find_person_needs_every_word_to_match(self):
+        self.assertEqual(tools.find_person(self.db, "alice nobody")["summary"], tools.COLD)
+
+    def test_find_person_partial_first_name_matches(self):
+        r = tools.find_person(self.db, "bob")
+        self.assertEqual(r["evidence"][0]["address"], "bob.synthetic@example.test")
+
+    def test_find_person_unknown_empty_and_hostile_input_goes_cold_or_safe(self):
+        for name in ("zeppelin", "", "   ", "%", "'; DROP TABLE emails; --"):
+            r = tools.find_person(self.db, name)
+            self.assertEqual(r["summary"], tools.COLD, name)
+        self.assertTrue(tools.search_emails(self.db, "widget")["source"])
+
     def test_who_wrote_to_unknown_goes_cold(self):
         self.assertEqual(tools.who_wrote_to(self.db, "nobody")["summary"], tools.COLD)
 

@@ -20,6 +20,7 @@ Rules you never break:
 4. Never write that a person said something if the email was addressed to that person. Say "an email to X from Y".
 5. If a tool returns the summary "{COLD}", say exactly "{COLD}" and nothing else.
 6. Use at most two short spoken sentences per answer. Never invent, guess or paraphrase email content as if it were a quote.
+7. Never guess an email address. When the user names a person, call find_person first, then use an address it returned as the sender or recipient filter. Do not say anything about the lookup except a short phrase such as "Checking who that is." Addresses from find_person are not emails and are never quoted as evidence.
 """
 
 _DATE = {"type": "string", "description": "YYYY-MM-DD, inclusive"}
@@ -58,7 +59,14 @@ def make_tools(db_path: str) -> tuple:
             db_path, args.get("person", ""), _opt(args, "date_from"), _opt(args, "date_to"),
             int(args.get("limit") or 10))
 
+    def person(args: dict) -> dict:
+        return enron_tools.find_person(db_path, args.get("name", ""))
     return (
+        ToolDef("find_person",
+                "Find the real email addresses in the archive that match a person's name. "
+                "Call this before filtering by sender or recipient.",
+                {"type": "object", "properties": {"name": {"type": "string"}},
+                 "required": ["name"]}, person, None),
         ToolDef("search_emails",
                 "Keyword search of the Enron email archive. Returns the best match with an excerpt.",
                 {"type": "object", "properties": {
