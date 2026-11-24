@@ -63,6 +63,13 @@ The `.kiro/` directory is committed at the repo root.
 No secrets or credentials appear in Git history.
 Reused code from Jozi Buddy is disclosed in the README.
 
+#### NFR-5: Cost control
+Judging runs 16 Dec 2026 to 29 Jan 2027, so any public deployment is exposed for about six weeks.
+Bedrock voice sessions are billed by usage and the audio stream runs for the whole session, so cost
+grows with the number and length of sessions. No public URL may expose live voice without an access
+code, a per-session time limit, an idle timeout and a hard daily cap. Searching the Enron index costs
+almost nothing and may stay available when live voice is paused.
+
 ---
 
 ## 2. Design
@@ -193,6 +200,17 @@ backend over a WebSocket; it does not contain business logic.
 
 ---
 
+### Milestone 7 — Cost guardrails and public deployment (must be done before any public URL)
+Context: the Nova Sonic price could not be confirmed from the official page (it loads its table with JavaScript) and third-party sources disagree, so measure real usage first and read the price from the Bedrock console. Do not publish a dollar figure that was not checked.
+- [ ] **T7.1** Log token usage per session: record the `usageEvent` totals (speech and text, input and output) plus session length to a local log, with no email or transcript content. Print a one-line summary when the session ends.
+- [ ] **T7.2** Session limits: configurable maximum session length (default 3 minutes, never above the 8-minute stream limit), idle timeout (default 60 seconds of silence), and close the Bedrock stream when the browser disconnects or the tab closes. Test with the fake stream.
+- [ ] **T7.3** Access code: `/io` and `/events` require a code from an environment variable (`NECRO_ACCESS_CODE`, listed in `.env.example`, never committed), compared in constant time. Tests for missing, wrong and correct codes.
+- [ ] **T7.4** Hard cap: a daily and an overall session limit. When reached, live voice is switched off and the UI gets a documented "paused" event (update `ui/EVENTS.md` and the validator together). Searching stays available.
+- [ ] **T7.5** Measure one real session's token usage with T7.1, read the current price from the Bedrock console, and record the per-minute cost and the date it was checked. Set the caps from that number.
+- [ ] **T7.6** (Yours) AWS Budgets alarm set well under the credit balance, with an action or a manual step that disables the app if it trips.
+- [ ] **T7.7** Plan B page: the "live voice paused" state with the demo video link and a working evidence panel.
+- [ ] **T7.8** Choose and document hosting. The backend is a long-running WebSocket server and needs the 973 MB index on local disk, so it does not fit Vercel functions (the static `ui/` could). Prefer one AWS host with an IAM role instead of the `aws login` credentials export. Also check the Devpost rules: is a hosted app URL required, or are the video and the repo enough?
+
 ## 4. Cut lines
 
 | If behind on | Cut this | Keep this |
@@ -203,6 +221,7 @@ backend over a WebSocket; it does not contain business logic.
 | Milestone 5 | Grid Ghost entirely | Enron + Wayback |
 | Milestone 5 | Live ESP API | Replay fixture |
 | Milestone 3 | Calendar costumes | Base costume per spirit |
+| Milestone 7 | T7.7 Plan B page, T7.8 hosting polish | T7.1 to T7.4 and T7.6. Never expose live voice without them; if they are not done, ship the video and repo only with no public voice URL. |
 
 ---
 
