@@ -1,0 +1,54 @@
+/* Wires the page. Source selected by URL params: ?mock=enron  or  ?ws=ws://host:port/path */
+(function () {
+  "use strict";
+  var doc = document, P = window.NecroProtocol, R = window.NecroRender;
+  var params = new URLSearchParams(location.search);
+  var $ = function (id) { return doc.getElementById(id); };
+  var statusEl = $("status"), stateEl = $("state"), spiritEl = $("spirit"), issuesEl = $("issues");
+  var transcript = R.createTranscript(doc, $("transcript"));
+  var evidence = R.createEvidence(doc, $("evidence-body"));
+  var mascot = window.NecroMascotSlot;
+  mascot.mount($("mascot-slot"));
+  evidence.reset("No evidence yet. Cited sources appear here.");
+
+  function issue(msg) {
+    var li = doc.createElement("li");
+    li.textContent = msg;
+    issuesEl.appendChild(li);
+    while (issuesEl.children.length > 20) issuesEl.removeChild(issuesEl.firstChild);
+  }
+
+  function handle(ev) {
+    switch (ev.type) {
+      case "transcript": transcript.update(ev); break;
+      case "state": stateEl.textContent = ev.state; doc.body.setAttribute("data-state", ev.state); mascot.setState(ev.state); break;
+      case "spirit": spiritEl.textContent = ev.spirit; doc.body.setAttribute("data-spirit", ev.spirit); break;
+      case "appearance": mascot.setAppearance(ev.config); break;
+      case "evidence": evidence.show(ev); break;
+      case "error": issue("backend error: " + ev.message); break;
+    }
+  }
+
+  function onFrame(data) {
+    try {
+      var r = P.parseFrame(data);
+      if (!r.ok) { issue("ignored malformed event: " + r.error); return; }
+      handle(r.event);
+    } catch (e) {
+      issue("ignored event that failed to render: " + (e && e.message));
+    }
+  }
+
+  var wsUrl = params.get("ws");
+  if (wsUrl) {
+    statusEl.textContent = "connecting";
+    window.NecroClient.connect(wsUrl, { onFrame: onFrame, onStatus: function (s) { statusEl.textContent = s; } });
+  } else {
+    var mock = params.get("mock") || "enron";
+    statusEl.textContent = "mock session (" + mock + "), synthetic content";
+    var speed = parseFloat(params.get("speed")) || 1;
+    var player = window.NecroMock.play(onFrame, { speed: speed });
+    $("replay").addEventListener("click", function () { location.reload(); });
+    window.addEventListener("pagehide", player.stop);
+  }
+})();

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self'; script-src 'self'">
+  <title>Necromancer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-state="idle">
+  <header>
+    <h1>Necromancer</h1>
+    <p class="meta">Spirit: <strong id="spirit">none</strong> | State: <strong id="state">idle</strong> | <span id="status" role="status">starting</span></p>
+    <button id="replay" type="button">Replay mock</button>
+  </header>
+  <main>
+    <section id="mascot-region" aria-label="Mascot">
+      <!-- MASCOT MOUNT POINT: see mascot-slot.js for the mount/setState/setAppearance interface. -->
+      <div id="mascot-slot"></div>
+    </section>
+    <section aria-labelledby="t-h">
+      <h2 id="t-h">Transcript</h2>
+      <div id="transcript" tabindex="0" role="log" aria-live="polite" aria-relevant="additions text"></div>
+    </section>
+    <section aria-labelledby="e-h" id="evidence-region">
+      <h2 id="e-h">Evidence</h2>
+      <div id="evidence-body" tabindex="0" aria-live="polite"></div>
+    </section>
+  </main>
+  <details id="issues-box"><summary>Protocol issues</summary><ul id="issues"></ul></details>
+  <script src="protocol.js"></script>
+  <script src="render.js"></script>
+  <script src="mock.js"></script>
+  <script src="mascot-slot.js"></script>
+  <script src="client.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

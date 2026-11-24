@@ -1,0 +1,27 @@
+:root { --bg:#0e1116; --panel:#171c24; --fg:#e8ecf2; --dim:#a9b3c2; --accent:#7df9ff; --mark:#ffe08a; --line:#2c3441; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+header { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:center; padding:.75rem 1rem; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:1.3rem; } h2 { margin:0 0 .5rem; font-size:1rem; color:var(--dim); }
+.meta { margin:0; color:var(--dim); }
+button { background:var(--panel); color:var(--fg); border:1px solid var(--dim); border-radius:4px; padding:.3rem .8rem; font:inherit; cursor:pointer; }
+:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+main { display:grid; grid-template-columns:minmax(140px,200px) 1fr 1.3fr; gap:1rem; padding:1rem; }
+@media (max-width:800px) { main { grid-template-columns:1fr; } }
+section { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.75rem; min-width:0; }
+#mascot-slot { min-height:128px; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--dim); }
+#transcript, #evidence-body { max-height:70vh; overflow:auto; }
+.turn { margin:.3rem 0; } .who { font-weight:bold; margin-right:.5rem; }
+.turn-user .who { color:#9ecbff; } .turn-spirit .who { color:var(--accent); }
+.interim .said { opacity:.75; font-style:italic; }
+.ev-kind { margin:0; text-transform:uppercase; font-size:.8rem; color:var(--accent); }
+.ev-source { margin:.2rem 0; word-break:break-all; }
+.ev-meta { display:grid; grid-template-columns:max-content 1fr; gap:.1rem .75rem; margin:.5rem 0; }
+.ev-meta dt { color:var(--dim); } .ev-meta dd { margin:0; word-break:break-word; }
+.ev-body { white-space:pre-wrap; word-break:break-word; background:#0b0e13; border:1px solid var(--line); padding:.6rem; border-radius:4px; font:14px/1.5 ui-monospace, monospace; }
+mark.quoted { background:var(--mark); color:#111; }
+.cold-msg { font-style:italic; color:var(--dim); } .placeholder { color:var(--dim); }
+#issues-box { padding:0 1rem 1rem; color:var(--dim); }
+body[data-state="alert"] #evidence-region { border-color:#ffb000; }
+@media (prefers-reduced-motion: no-preference) { section { transition:border-color .3s; } }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
