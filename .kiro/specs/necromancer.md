@@ -138,12 +138,12 @@ backend over a WebSocket; it does not contain business logic.
 ## 3. Implementation tasks
 
 ### Milestone 0 — Foundation (Days 1–2: 18–19 Nov)
-- [ ] **T0.1** Create public GitHub repository; commit `.kiro/` directory.
-- [ ] **T0.2** Create `.gitignore` (exclude `data/enron/`, `data/wayback/`, `.env`, `__pycache__`, `node_modules`).
-- [ ] **T0.3** Write `README.md` with project description, setup instructions, and Jozi Buddy voice-core disclosure.
-- [ ] **T0.4** Confirm `sqlite3` FTS5 support: `python3 -c "import sqlite3; print(sqlite3.sqlite_version)"`.
-- [ ] **T0.5** Confirm Bedrock Nova Sonic model access in target AWS region.
-- [ ] **T0.6** Request Kiro credits (deadline 1 Dec 2026).
+- [x] **T0.1** Create public GitHub repository; commit `.kiro/` directory.
+- [x] **T0.2** Create `.gitignore` (exclude `data/enron/`, `data/wayback/`, `.env`, `__pycache__`, `node_modules`).
+- [x] **T0.3** Write `README.md` with project description, setup instructions, and Jozi Buddy voice-core disclosure.
+- [x] **T0.4** Confirm `sqlite3` FTS5 support: `python3 -c "import sqlite3; print(sqlite3.sqlite_version)"`.
+- [x] **T0.5** Bedrock Nova Sonic access (21 Nov 2026): `amazon.nova-2-5-sonic` is ACTIVE, AUTHORIZED, region-available in **us-east-1 only** (not eu-west-1). A real bidirectional stream has NOT been tried; no boto3 / pip / python3-venv on this machine, so the SDK install is still to do.
+- [x] **T0.6** (user reports credits already granted) Request Kiro credits (deadline 1 Dec 2026).
 
 ### Milestone 1 — Enron data pipeline (Days 2–3: 19–20 Nov)
 - [x] **T1.1** Download the CMU Enron email dataset (~2.6 GB) to `data/enron/` (gitignored).
