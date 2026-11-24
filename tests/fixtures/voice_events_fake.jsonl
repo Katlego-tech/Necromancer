@@ -1,0 +1,18 @@
+{"type": "spirit", "spirit": "enron"}
+{"type": "appearance", "config": {"spirit": "enron", "base": "little_necromancer", "renderer": "2d", "costume": "enron_ghost", "label": "Enron Ghost", "palette": {"body": "#F1F4F0", "trim": "#5E7F63", "eyes": "#7FB88A"}, "props": ["lapels", "paper"], "animation": "shapeshift", "reduced_motion": false}}
+{"type": "state", "state": "idle"}
+{"type": "state", "state": "listening"}
+{"type": "transcript", "turn_id": "u1", "role": "user", "text": "raptor question", "final": true}
+{"type": "transcript", "turn_id": "s1", "role": "spirit", "text": "Searching the archives.", "final": false}
+{"type": "transcript", "turn_id": "s1", "role": "spirit", "text": "Searching the archives.", "final": true}
+{"type": "evidence", "kind": "email", "source": "ev-0001", "content": "Hello Bob,\nthe quarterly numbers need another review before Friday.\nAlice", "metadata": {"evidence_id": "ev-0001", "sender": "alice@example.invalid", "recipients": ["bob@example.invalid"], "date": "2001-01-01T00:00:00Z", "subject": "Numbers", "source_path": "x/y/1."}, "excerpt": "another review before Friday"}
+{"type": "transcript", "turn_id": "u2", "role": "user", "text": "anything else", "final": true}
+{"type": "state", "state": "speaking"}
+{"type": "transcript", "turn_id": "s2", "role": "spirit", "text": "Alice wrote \"the quarterly numbers need another review before Friday\".", "final": false}
+{"type": "transcript", "turn_id": "s2", "role": "spirit", "text": "Alice wrote \"the quarterly numbers need another review before Friday\".", "final": true}
+{"type": "state", "state": "listening"}
+{"type": "state", "state": "summoning"}
+{"type": "spirit", "spirit": "wayback"}
+{"type": "appearance", "config": {"spirit": "wayback", "base": "little_necromancer", "renderer": "2d", "costume": "retro_web_era", "label": "Wayback Medium (era-inspired)", "palette": {"body": "#F3F0FF", "trim": "#8A6ED6", "eyes": "#7DF9FF"}, "props": ["browser_halo", "pixel_accents"], "animation": "shapeshift", "reduced_motion": false, "era_inspired": true}}
+{"type": "state", "state": "listening"}
+{"type": "state", "state": "idle"}
