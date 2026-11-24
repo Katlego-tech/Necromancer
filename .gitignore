@@ -8,3 +8,5 @@ data/enron/
 data/wayback/
 *.sqlite
 *.db
+.worktrees/
+.agents/
