@@ -108,9 +108,10 @@ async def run(model: str, region: str, seconds: float) -> int:
     texts: list[str] = []
     audio_bytes = 0
     error = None
+    usage_total: dict = {}
 
     async def reader() -> None:
-        nonlocal audio_bytes, error
+        nonlocal audio_bytes, error, usage_total
         _, receiver = await stream.await_output()
         async for result in receiver:
             value = getattr(result, "value", None)
@@ -123,6 +124,8 @@ async def run(model: str, region: str, seconds: float) -> int:
                 print("EVENT", json.dumps(ev)[:300], file=sys.stderr)
             for name, body in ev.items():
                 seen[name] = seen.get(name, 0) + 1
+                if name == "usageEvent":
+                    usage_total = body.get("details", {}).get("total", usage_total)
                 if name == "textOutput":
                     texts.append(body.get("content", ""))
                 elif name == "audioOutput":
@@ -151,6 +154,7 @@ async def run(model: str, region: str, seconds: float) -> int:
     print("event types received:", seen or "none")
     print("text output:", texts or "none")
     print("audio bytes received:", audio_bytes)
+    print("usage total (tokens):", json.dumps(usage_total))
     if error:
         print("error:", error[:500])
     return 0 if (audio_bytes > 0 and not error) else 1
