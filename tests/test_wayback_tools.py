@@ -116,19 +116,32 @@ class WaybackToolsTest(unittest.TestCase):
     def test_empty_page_is_cold(self):
         self.assertEqual(self.read(Fake(snap("19990301000000", body=b"<script>x</script>"))), COLD)
 
-    def test_validation_rejects_malformed_input(self):
+    def test_validation_returns_cold_trail_without_fetching(self):
         f = Fake(snap("19990301000000"))
         for url in ("", "ftp://x.test/", "not a url", "http://", None, "http://a b.test/"):
-            with self.assertRaises(ValueError):
-                self.read(f, url=url)
+            self.assertEqual(self.read(f, url=url), COLD)
         for ts in ("1999", "199903010000", "1999030100000a", "", None, "19990301000000 "):
-            with self.assertRaises(ValueError):
-                self.read(f, ts=ts)
+            self.assertEqual(self.read(f, ts=ts), COLD)
         for year in ("99", "abcd", None, 1800, "1999-"):
-            with self.assertRaises(ValueError):
-                self.lst(f, year=year)
+            self.assertEqual(self.lst(f, year=year), COLD)
         self.assertEqual(f.calls, [])
 
+    def test_wrong_shape_cache_is_refetched_not_raised(self):
+        import os
+        for body in ({"snapshots": [{"timestamp": "19990201000000"}, 5]}, {"snapshots": "x"}):
+            tools._cache_write(tools._cache_path(self.cache, "cdx", URL, "1999"), body)
+            f = Fake((200, "x", json.dumps(CDX).encode()))
+            self.assertEqual(len(self.lst(f)["evidence"]), 2)
+            self.assertEqual(len(f.calls), 1)
+        tools._cache_write(tools._cache_path(self.cache, "snap", URL, "19990301000000"),
+                           {"timestamp": "19990301000000", "text": "x"})
+        r = self.read(Fake(snap("19990301000000")))
+        self.assertIn("19990301000000", r["source"])
+    def test_unexpected_exception_returns_cold_trail(self):
+        def boom(*a, **k):
+            raise RuntimeError("x")
+        self.assertEqual(self.read(boom), COLD)
+        self.assertEqual(self.lst(boom), COLD)
     # --- list_snapshots
     def test_list_snapshots_returns_records_and_query(self):
         f = Fake((200, "x", json.dumps(CDX).encode()))

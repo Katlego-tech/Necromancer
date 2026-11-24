@@ -174,7 +174,7 @@ def _archive_link(url: str, timestamp: str) -> str:
     return f"https://web.archive.org/web/{timestamp}/{url}"
 
 
-def list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
+def _list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
                    fetch: Optional[Fetch] = None,
                    sleep: Callable[[float], None] = time.sleep) -> dict:
     """List archived captures of `url` during `year` (one per month, HTTP 200, HTML)."""
@@ -182,6 +182,11 @@ def list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
     path = _cache_path(cache_dir, "cdx", url, year)
     cached = _cache_read(path)
     rows = cached.get("snapshots") if cached else None
+    if isinstance(rows, list):
+        rows = [r for r in rows if isinstance(r, dict) and _TS.match(str(r.get("timestamp", "")))
+                and isinstance(r.get("original"), str) and r["original"]]
+    if not isinstance(rows, list) or not rows:
+        rows = None
     if rows is None:
         query = urllib.parse.urlencode([
             ("url", url), ("from", year + "0101"), ("to", year + "1231"),
@@ -221,14 +226,16 @@ def list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
     }
 
 
-def read_snapshot(url: str, timestamp: str, *, cache_dir: str = DEFAULT_CACHE_DIR,
+def _read_snapshot(url: str, timestamp: str, *, cache_dir: str = DEFAULT_CACHE_DIR,
                   fetch: Optional[Fetch] = None,
                   sleep: Callable[[float], None] = time.sleep) -> dict:
     """Read the archived page nearest `timestamp` as plain text. Reports the served timestamp."""
     url, timestamp = _check_url(url), _check_timestamp(timestamp)
     req_path = _cache_path(cache_dir, "snap", url, timestamp)
     rec = _cache_read(req_path)
-    cached = rec is not None and _TS.match(str(rec.get("timestamp", ""))) and "text" in rec
+    cached = (rec is not None and _TS.match(str(rec.get("timestamp", ""))) is not None
+              and isinstance(rec.get("url"), str) and bool(rec["url"])
+              and isinstance(rec.get("text"), str) and bool(rec["text"]))
     if not cached:
         got = _get(SNAPSHOT_URL.format(timestamp=timestamp, url=url), fetch or _default_fetch, sleep)
         if got is None or got[0] != 200 or not got[2]:
@@ -254,3 +261,23 @@ def read_snapshot(url: str, timestamp: str, *, cache_dir: str = DEFAULT_CACHE_DI
                       "requested_timestamp": rec.get("requested_timestamp", timestamp),
                       "archive_url": link, "cached": bool(cached)}],
     }
+
+
+def list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
+                   fetch: Optional[Fetch] = None,
+                   sleep: Callable[[float], None] = time.sleep) -> dict:
+    """Never raises: malformed input and unexpected errors return the cold trail."""
+    try:
+        return _list_snapshots(url, year, cache_dir=cache_dir, fetch=fetch, sleep=sleep)
+    except Exception:
+        return _cold()
+
+
+def read_snapshot(url: str, timestamp: str, *, cache_dir: str = DEFAULT_CACHE_DIR,
+                  fetch: Optional[Fetch] = None,
+                  sleep: Callable[[float], None] = time.sleep) -> dict:
+    """Never raises: malformed input and unexpected errors return the cold trail."""
+    try:
+        return _read_snapshot(url, timestamp, cache_dir=cache_dir, fetch=fetch, sleep=sleep)
+    except Exception:
+        return _cold()
