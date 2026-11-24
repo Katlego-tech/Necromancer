@@ -37,7 +37,18 @@ The dataset was made public during a federal investigation and contains real peo
 
 ## Setup
 
-Requirements: Python 3.10+ with SQLite FTS5 (standard library only; no pip packages), Node for the UI tests (developed with v24).
+Requirements:
+- Python 3.10+ with SQLite FTS5 for the spirit tools, mascot and tests (standard library only).
+- **Python 3.12+** for the voice engine: the Bedrock bidirectional-streaming SDK does not support 3.10. With [uv](https://docs.astral.sh/uv/): `uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt`.
+- Node for the UI tests (developed with v24).
+- AWS credentials with access to Amazon Nova Sonic in **us-east-1**. The model is not offered in all regions (it was not listed in eu-west-1).
+
+Check your Bedrock access with a short real call (no microphone needed):
+
+```bash
+aws login
+.venv/bin/python scripts/nova_smoke_test.py
+```
 
 ```bash
 # Run the tests

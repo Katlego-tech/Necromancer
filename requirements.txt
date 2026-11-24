@@ -1,0 +1,5 @@
+# Voice engine only. Needs Python 3.12+ (aws-sdk-bedrock-runtime requires it).
+# Everything under spirits/, mascot/ and tests/ uses the standard library only.
+aws-sdk-bedrock-runtime==0.13.1
+smithy-http[awscrt]==0.10.0
+awscrt==0.32.2

@@ -142,7 +142,7 @@ backend over a WebSocket; it does not contain business logic.
 - [x] **T0.2** Create `.gitignore` (exclude `data/enron/`, `data/wayback/`, `.env`, `__pycache__`, `node_modules`).
 - [x] **T0.3** Write `README.md` with project description, setup instructions, and Jozi Buddy voice-core disclosure.
 - [x] **T0.4** Confirm `sqlite3` FTS5 support: `python3 -c "import sqlite3; print(sqlite3.sqlite_version)"`.
-- [x] **T0.5** Bedrock Nova Sonic access (21 Nov 2026): `amazon.nova-2-5-sonic` is ACTIVE, AUTHORIZED, region-available in **us-east-1 only** (not eu-west-1). A real bidirectional stream has NOT been tried; no boto3 / pip / python3-venv on this machine, so the SDK install is still to do.
+- [x] **T0.5** Bedrock Nova Sonic access confirmed with a real call (21 Nov 2026): `scripts/nova_smoke_test.py` got text and audio back from `amazon.nova-2-5-sonic` in **us-east-1** (not offered in eu-west-1). Needs Python 3.12+ (`.venv` via uv), the CRT transport (`awscrt`), and a continuously streaming audio block for text turns.
 - [x] **T0.6** (user reports credits already granted) Request Kiro credits (deadline 1 Dec 2026).
 
 ### Milestone 1 — Enron data pipeline (Days 2–3: 19–20 Nov)
