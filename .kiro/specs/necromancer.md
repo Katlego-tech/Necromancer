@@ -153,12 +153,12 @@ backend over a WebSocket; it does not contain business logic.
 - [x] **T1.5** Enron demo questions checked against the real index (20 Nov 2026). Findings: Raptor questions return specific, cited emails (407 mention Raptor). Skilling, Lay and Fastow have almost no *sent* mail in the dataset (66 / 21 / 8), so ask what was sent *to* them (`recipient` filter) and never phrase answers as "Lay said". Keyword search matches word stems, so "losses" also returns unrelated "loss" emails; the voice prompt must read the excerpt, not assume relevance.
 
 ### Milestone 2 — Voice core + Enron ghost end-to-end (Days 4–6: 21–23 Nov)
-- [ ] **T2.1** Port or adapt the Nova Sonic bidirectional session from Jozi Buddy into `voice/session.py`.
+- [x] **T2.1** Port or adapt the Nova Sonic bidirectional session from Jozi Buddy into `voice/session.py`. (Written fresh, nothing copied from Jozi Buddy; live-verified with typed questions.)
 - [ ] **T2.2** Implement `voice/summon.py`: `summon(spirit)` swaps persona prompt and tool set.
-- [ ] **T2.3** Wire Enron tools into the session; test a voice question end-to-end.
-- [ ] **T2.4** Add transcript and evidence-panel event emitters to the voice session.
+- [x] **T2.3** Wire Enron tools into the session; test a voice question end-to-end. (Live run: typed question, Nova Sonic audio reply; no microphone.)
+- [x] **T2.4** Add transcript and evidence-panel event emitters to the voice session.
 - [ ] **T2.5** Build the minimal web UI: static HTML with transcript and evidence panel (no mascot yet).
-- [ ] **T2.6** Confirm grounding rule holds: spoken output cites sender, date, and verbatim quote.
+- [x] **T2.6** Confirm grounding rule holds: spoken output cites sender, date, and verbatim quote.
 
 ### Milestone 3 — 2D Mascot (Days 7–8: 24–25 Nov)
 - [ ] **T3.1** Export transparent-background base sprite from reference images (or trace manually): `assets/sprites/idle.png`.

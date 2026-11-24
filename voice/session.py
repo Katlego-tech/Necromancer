@@ -52,7 +52,7 @@ class VoiceSession:
                  clock=time.monotonic, frame_seconds: float = 0.064, tool_timeout: float = 20.0,
                  filler_after: float = 1.5, renew_after: float = 420.0,
                  close_cap: float = 10.0, history_cap: int = 200_000,
-                 summon_grace: float = 5.0):
+                 summon_grace: float = 5.0, turn_grace: float = 0.0):
         self.registry = registry or DEFAULT_REGISTRY
         self.factory = factory
         self.emitter = emitter
@@ -64,6 +64,7 @@ class VoiceSession:
         self.close_cap = close_cap
         self.history_cap = history_cap
         self.summon_grace = summon_grace
+        self.turn_grace = turn_grace            # wait this long after an END_TURN text block
         self.spirit = self.registry.get(spirit_id)
         self.transcript: list[dict] = []        # {"role": "user"|"spirit", "text": str}, FINAL only
         self.tool_results: list[dict] = []      # raw tool dicts, as returned by handlers
@@ -79,6 +80,9 @@ class VoiceSession:
         self._user_n = 0
         self._turn_n = 0
         self._cold = False
+        self._turn_timer: asyncio.Task | None = None
+        self._spec_blocks = 0                   # SPECULATIVE assistant text blocks in this turn
+        self._final_blocks = 0                  # their FINAL echoes seen so far
         self._barged = False
         self._closing = False
         self._renewal = False
@@ -108,6 +112,8 @@ class VoiceSession:
 
     async def send_text(self, text: str) -> None:
         """A typed user turn: shown in the transcript, then sent to the model."""
+        if self._turn_timer:
+            self._close_turn()
         self._user_n += 1
         self._barged = False
         self.emitter.transcript(f"u{self._user_n}", "user", text, True)
@@ -132,6 +138,8 @@ class VoiceSession:
 
     async def close(self) -> None:
         self._closing = True
+        if self._turn is not None:
+            self._close_turn()
         if self._pump_task:
             self._pump_task.cancel()
             await asyncio.gather(self._pump_task, return_exceptions=True)
@@ -324,6 +332,9 @@ class VoiceSession:
                     stage = json.loads(fields).get("generationStage")
                 except ValueError:
                     pass
+            if (body.get("role") or "").upper() == "ASSISTANT" and body.get("type") == "TEXT" \
+                    and stage == "SPECULATIVE":
+                self._spec_blocks += 1
             conn.blocks[body.get("contentId")] = {
                 "role": (body.get("role") or "").upper(), "type": body.get("type"),
                 "stage": stage, "text": [], "turn": None}
@@ -331,6 +342,7 @@ class VoiceSession:
             self._on_text(conn, body)
         elif name == "audioOutput":
             pcm = base64.b64decode(body.get("content", ""))
+            self._cancel_turn_timer()
             self.audio_bytes += len(pcm)
             if pcm and self.state != "speaking":
                 self._set_state("speaking")
@@ -364,12 +376,15 @@ class VoiceSession:
         block["text"].append(text)
         if role == "USER":
             if block["turn"] is None:
+                if self._turn_timer:
+                    self._close_turn()
                 self._user_n += 1
                 block["turn"] = f"u{self._user_n}"
                 self._barged = False
                 self._cold = False
             self.emitter.transcript(block["turn"], "user", " ".join(t.strip() for t in block["text"]), final)
         elif role == "ASSISTANT":
+            self._cancel_turn_timer()
             if self._turn is None:
                 self._turn_n += 1
                 self._turn = {"id": f"s{self._turn_n}", "final": [], "spec": []}
@@ -390,18 +405,43 @@ class VoiceSession:
         if block.get("role") == "USER" and final and text:
             self.transcript.append({"role": "user", "text": text})
         elif block.get("role") == "ASSISTANT" and final and text:
-            problems = check_turn(text, self.tool_results, after_cold=self._cold)
-            self._cold = False
-            for p in problems:
-                self.grounding_violations.append(p)
-                self.emitter.error("grounding: " + p)
-            if stop == "END_TURN":
-                self._close_turn()
+            self._final_blocks += 1
+            if stop == "END_TURN" or self._final_blocks >= self._spec_blocks > 0:
+                self._end_turn_soon()
+
+    def _cancel_turn_timer(self) -> None:
+        if self._turn_timer:
+            self._turn_timer.cancel()
+            self._turn_timer = None
+
+    def _end_turn_soon(self) -> None:
+        """Nova's FINAL text blocks arrive at playback pace and a block can end with END_TURN
+        while more FINAL blocks follow. Close when every SPECULATIVE block has its FINAL echo;
+        otherwise wait turn_grace for the rest (0 closes at once)."""
+        self._cancel_turn_timer()
+        if self.turn_grace <= 0 or self._final_blocks >= self._spec_blocks:
+            self._close_turn()
+            return
+
+        async def later():
+            await asyncio.sleep(self.turn_grace)
+            self._turn_timer = None
+            self._close_turn()
+        self._turn_timer = asyncio.create_task(later())
 
     def _close_turn(self, interrupted: bool = False) -> None:
+        if self._turn_timer and self._turn_timer is not asyncio.current_task():
+            self._turn_timer.cancel()
+        self._turn_timer = None
+        self._spec_blocks = self._final_blocks = 0
         turn, self._turn = self._turn, None
         if turn:
             finals = " ".join(turn["final"])
+            if finals:
+                for p in check_turn(finals, self.tool_results, after_cold=self._cold):
+                    self.grounding_violations.append(p)
+                    self.emitter.error("grounding: " + p)
+                self._cold = False
             text = finals if (finals or interrupted) else " ".join(turn["spec"])
             self.emitter.transcript(turn["id"], "spirit", text, True)
             if finals:

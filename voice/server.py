@@ -165,7 +165,8 @@ def main(argv=None) -> None:
     module = importlib.import_module(f"spirits.{args.spirit}.spirit")
     registry = Registry()
     registry.register(module.make_spirit(args.db))
-    app = build_app(registry, args.spirit, BedrockFactory(), record_path=args.record)
+    app = build_app(registry, args.spirit, BedrockFactory(), record_path=args.record,
+                    turn_grace=12.0)
     print(f"Open http://127.0.0.1:{args.port}/ui/index.html"
           f"?ws=ws://127.0.0.1:{args.port}/events&io=ws://127.0.0.1:{args.port}/io")
     web.run_app(app, host="127.0.0.1", port=args.port, print=None)

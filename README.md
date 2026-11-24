@@ -12,7 +12,7 @@ Built for **Kiroween 2026**, Frankenstein category, with Kiro (specs, steering f
 | Wayback Medium | Wayback Machine CDX and raw `id_` snapshot APIs | Tools with offline cache built and tested; no site cached yet |
 | Grid Ghost | EskomSePush schedule data, plus a replay mode | Replay tools built against a **synthetic** fixture; live API not implemented |
 
-The shared voice engine (Amazon Nova Sonic on Amazon Bedrock) is **not built yet**. See `.kiro/specs/necromancer.md` for the task list.
+The shared voice engine (Amazon Nova Sonic on Amazon Bedrock, `voice/`) and the Enron Ghost by voice are built. A live run with typed questions and the real Enron index passed (see Voice below). Microphone input, speaker playback and mascot rendering in a browser have not been tested by a person yet. Wayback Medium and Grid Ghost are not wired into the voice engine. See `.kiro/specs/necromancer.md` for the task list.
 
 ## Grounding rule
 
@@ -27,7 +27,7 @@ A 2D white ghost, "The Little Necromancer". The mascot is 2D for the hackathon; 
 ## Code provenance and disclosure
 
 - **Written for this project during the submission period:** everything in this repository, unless listed below.
-- **Reused from another project:** the Nova Sonic bidirectional voice session is intended to be adapted from the author's earlier project, *Jozi Buddy*. **TO CONFIRM:** nothing from Jozi Buddy has been copied in yet. When it is, list the exact files and what was changed here.
+- **Reused from another project:** nothing. The voice session in `voice/` was written fresh for this project from the AWS Nova Sonic documentation and `scripts/nova_smoke_test.py`. Nothing was copied from *Jozi Buddy*.
 - **Third-party data:** the [CMU Enron Email Dataset](https://www.cs.cmu.edu/~enron/) (May 7, 2015 version). It is not included in this repository. See the privacy note below.
 - **Mascot artwork:** the reference images in the repo root. **TO CONFIRM:** record how they were made (tool, author, terms of use) before submission.
 
@@ -50,6 +50,13 @@ aws login
 .venv/bin/python scripts/nova_smoke_test.py
 ```
 
+## Voice (Enron Ghost)
+The voice server needs `aiohttp` (pinned in `requirements.txt`), AWS credentials for Nova Sonic in us-east-1 (`aws login`), and the Enron index built as shown below.
+```bash
+.venv/bin/python -m voice.server --spirit enron --db data/enron/enron.sqlite --port 8765
+```
+Open the URL it prints (`/ui/index.html?ws=ws://127.0.0.1:8765/events&io=ws://127.0.0.1:8765/io`). The server binds 127.0.0.1 only, serves only `ui/` and the mascot assets, and refuses WebSocket connections from another origin. The page has a microphone button and a text box. The Bedrock stream opens when the server starts, so it uses AWS from that moment.
+Live check against real Bedrock and the real index (typed questions, silent microphone, writes a report with per-quote substring checks): `NECRO_LIVE=1 .venv/bin/python scripts/live_enron_e2e.py data/enron/enron.sqlite`. The offline suite never calls AWS; `tests/test_voice_live.py` runs only with `NECRO_LIVE=1`.
 ```bash
 # Run the tests
 python3 -m unittest discover -s tests -t .

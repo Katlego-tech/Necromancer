@@ -140,6 +140,22 @@ class SessionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(hist[1]["text"], "Hello there friend.")
         await s.close()
 
+    async def test_turn_waits_for_a_final_echo_of_every_speculative_block(self):
+        s, f, em = build([fb.on_text("hi", fb.completion_start(),
+                                     fb.assistant_text("First part.", "SPECULATIVE"),
+                                     fb.assistant_text("Second part.", "SPECULATIVE"),
+                                     fb.assistant_text("First part.", "FINAL", "END_TURN"),
+                                     fb.assistant_text("Second part.", "FINAL", "PARTIAL_TURN"))],
+                         turn_grace=5)
+        await s.start()
+        await s.send_text("hi")
+        await wait_for(lambda: any(e["type"] == "transcript" and e["role"] == "spirit" and e["final"]
+                                   for e in em.events))
+        finals = [e for e in em.events if e["type"] == "transcript" and e["role"] == "spirit" and e["final"]]
+        self.assertEqual([e["text"] for e in finals], ["First part. Second part."])
+        self.assertEqual(s.transcript[-1], {"role": "spirit", "text": "First part. Second part."})
+        await s.close()
+
     async def test_state_sequence_with_speaking(self):
         s, f, em = build([fb.on_text("hi", fb.completion_start(), fb.audio_out(),
                                      fb.assistant_text("Hi.", "FINAL", "END_TURN"), fb.completion_end())])
