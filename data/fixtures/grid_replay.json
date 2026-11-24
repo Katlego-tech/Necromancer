@@ -1,0 +1,34 @@
+{
+  "_label": "SYNTHETIC DEMO FIXTURE. These outage events are invented for demonstration and testing. They are NOT real historical Eskom or EskomSePush data and must never be presented as such.",
+  "synthetic": true,
+  "status": {
+    "stage": "4",
+    "stage_updated": "2026-11-30T17:40:00+02:00"
+  },
+  "events": [
+    {
+      "id": "demo-stage4-sandton",
+      "area": "Sandton (Demo Area 1)",
+      "stage": "4",
+      "start": "2026-11-30T18:00:00+02:00",
+      "end": "2026-11-30T20:30:00+02:00",
+      "note": "Stage 4 (synthetic demo event)"
+    },
+    {
+      "id": "demo-stage4-sandton-late",
+      "area": "Sandton (Demo Area 1)",
+      "stage": "4",
+      "start": "2026-11-30T22:00:00+02:00",
+      "end": "2026-12-01T00:30:00+02:00",
+      "note": "Stage 4 (synthetic demo event)"
+    },
+    {
+      "id": "demo-stage2-soweto",
+      "area": "Soweto (Demo Area 2)",
+      "stage": "2",
+      "start": "2026-11-30T19:00:00+02:00",
+      "end": "2026-11-30T21:30:00+02:00",
+      "note": "Stage 2 (synthetic demo event)"
+    }
+  ]
+}

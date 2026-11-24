@@ -177,12 +177,12 @@ backend over a WebSocket; it does not contain business logic.
 - [x] **T4.6** Write unit tests for Wayback tools; verify cached-only paths work offline.
 
 ### Milestone 5 — Grid Ghost (Days 12–13: 29–30 Nov)
-- [ ] **T5.1** Create `data/fixtures/grid_replay.json`: a realistic past outage record.
-- [ ] **T5.2** Implement `spirits/grid/tools.py`: `replay_outage`, `current_stage`, `next_outage`.
+- [x] **T5.1** Create `data/fixtures/grid_replay.json`: a realistic past outage record.
+- [x] **T5.2** Implement `spirits/grid/tools.py`: `replay_outage`, `current_stage`, `next_outage`.
 - [ ] **T5.3** Implement proactive alert injection into the Nova Sonic stream (replay mode first).
 - [ ] **T5.4** Add Grid Ghost costume JSON: `costumes/grid/amber_alert.json`.
 - [ ] **T5.5** Obtain EskomSePush API key; test `current_stage` live (bonus; do not block demo on this).
-- [ ] **T5.6** Write unit tests for Grid tools; confirm replay works offline.
+- [x] **T5.6** Write unit tests for Grid tools; confirm replay works offline.
 
 ### Milestone 6 — Demo polish and submission (Days 14–17: 1–4 Dec)
 - [ ] **T6.1** Run the full three-minute demo script end-to-end; fix any failures.
