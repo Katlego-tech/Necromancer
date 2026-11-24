@@ -154,10 +154,10 @@ backend over a WebSocket; it does not contain business logic.
 
 ### Milestone 2 — Voice core + Enron ghost end-to-end (Days 4–6: 21–23 Nov)
 - [x] **T2.1** Port or adapt the Nova Sonic bidirectional session from Jozi Buddy into `voice/session.py`. (Written fresh, nothing copied from Jozi Buddy; live-verified with typed questions.)
-- [ ] **T2.2** Implement `voice/summon.py`: `summon(spirit)` swaps persona prompt and tool set.
+- [x] **T2.2** Implement `voice/summon.py`: `summon(spirit)` swaps persona prompt and tool set. (Done as a handover: a new Bedrock stream is opened under the same engine session, so transcript, state and UI events carry over. Verified with offline fake-stream tests only; a live summon swap has not been run. Only the Enron spirit is registered so far.)
 - [x] **T2.3** Wire Enron tools into the session; test a voice question end-to-end. (Live run: typed question, Nova Sonic audio reply; no microphone.)
 - [x] **T2.4** Add transcript and evidence-panel event emitters to the voice session.
-- [ ] **T2.5** Build the minimal web UI: static HTML with transcript and evidence panel (no mascot yet).
+- [x] **T2.5** Build the minimal web UI: static HTML with transcript and evidence panel (no mascot yet). (`ui/`, merged; the mascot slot is now wired too. Covered by 22 node tests and an event-log replay through the validator; it has not been opened in a real browser, and microphone and playback are untested.)
 - [x] **T2.6** Confirm grounding rule holds: spoken output cites sender, date, and verbatim quote.
 
 ### Milestone 3 — 2D Mascot (Days 7–8: 24–25 Nov)
