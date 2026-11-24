@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Necromancer mascot demo</title>
+<link rel="stylesheet" href="mascot.css">
+<style>
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: #12101c; color: #e8e6f2; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 16px; max-width: 1000px; margin: 0 auto; }
+  .stage { background: #1c1930; border-radius: 10px; padding: 12px; text-align: center; }
+  .panel { background: #1c1930; border-radius: 10px; padding: 12px; }
+  .panel h2 { margin: 0 0 6px; font-size: 14px; color: #9d97c4; }
+  button { margin: 2px; padding: 6px 10px; border-radius: 6px; border: 1px solid #4a4570; background: #2a2645; color: inherit; cursor: pointer; }
+  button[aria-pressed="true"] { background: #5b4aa8; }
+  .sizes { display: flex; gap: 12px; align-items: end; justify-content: center; margin-top: 8px; }
+  .sizes .necro { width: auto; }
+  #err { color: #ffb000; }
+  pre { white-space: pre-wrap; margin: 0; }
+  label { display: block; margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <section class="stage">
+    <div id="mascot" style="width:240px"></div>
+    <div class="sizes">
+      <div id="m128" style="width:128px"></div>
+      <div id="m64" style="width:64px"></div>
+    </div>
+    <p id="status" aria-live="polite">state: idle</p>
+  </section>
+  <section>
+    <div class="panel"><h2>State</h2><div id="states"></div>
+      <label>Speaking level <input id="level" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label><input id="auto" type="checkbox"> simulate speech amplitude</label>
+    </div>
+    <div class="panel" style="margin-top:12px"><h2>Costume (swaps without reload)</h2><div id="costumes"></div></div>
+    <div class="panel" style="margin-top:12px"><h2>Motion</h2>
+      <label><input id="reduced" type="checkbox"> reduced motion (explicit option; also follows the OS setting)</label>
+    </div>
+    <div class="panel" style="margin-top:12px"><h2>Transcript (stand-in; never covered by the mascot)</h2>
+      <pre id="transcript">Ghost: the trail goes cold.</pre></div>
+    <div class="panel" style="margin-top:12px"><h2>Evidence panel (stand-in)</h2>
+      <pre id="evidence">Evidence stays visible and unobscured in every state.</pre></div>
+    <p id="err"></p>
+  </section>
+</main>
+<script src="mascot.js"></script>
+<script>
+(function () {
+  var NAMES = ["default", "enron", "wayback", "grid"];
+  var main = Necromancer.mount(document.getElementById("mascot"));
+  var small = [Necromancer.mount(document.getElementById("m128")), Necromancer.mount(document.getElementById("m64"))];
+  var all = [main].concat(small);
+  var status = document.getElementById("status");
+  var err = document.getElementById("err");
+  var stateBox = document.getElementById("states"), costBox = document.getElementById("costumes");
+
+  Necromancer.core.STATES.forEach(function (s) {
+    var b = document.createElement("button"); b.textContent = s; b.dataset.state = s;
+    b.onclick = function () { all.forEach(function (m) { m.setState(s); }); };
+    stateBox.appendChild(b);
+  });
+  document.getElementById("mascot").addEventListener("necro:statechange", function (e) {
+    status.textContent = "state: " + e.detail.state;
+    Array.prototype.forEach.call(stateBox.children, function (b) { b.setAttribute("aria-pressed", b.dataset.state === e.detail.state); });
+  });
+  NAMES.forEach(function (n) {
+    var b = document.createElement("button"); b.textContent = n; b.dataset.costume = n; costBox.appendChild(b);
+    b.onclick = function () {
+      fetch("costumes/" + n + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (cfg) {
+          all.forEach(function (m) { m.setAppearance(cfg); });
+          Array.prototype.forEach.call(costBox.children, function (c) { c.setAttribute("aria-pressed", c === b); });
+          err.textContent = "";
+        })
+        .catch(function (e) { err.textContent = "Could not load costume " + n + " (" + e.message + "). Serve over http, e.g. python3 -m http.server."; });
+    };
+  });
+  var level = document.getElementById("level");
+  level.oninput = function () { all.forEach(function (m) { m.setSpeakingLevel(+level.value); }); };
+  var timer = null;
+  document.getElementById("auto").onchange = function (e) {
+    clearInterval(timer);
+    if (e.target.checked) {
+      all.forEach(function (m) { m.setState("speaking"); });
+      var t = 0;
+      timer = setInterval(function () { t += 0.35; var v = Math.max(0, Math.sin(t) * 0.6 + Math.sin(t * 2.3) * 0.4); level.value = v; level.oninput(); }, 90);
+    } else { level.value = 0; level.oninput(); }
+  };
+  document.getElementById("reduced").onchange = function (e) {
+    all.forEach(function (m) { m.setReducedMotion(e.target.checked ? true : null); });
+  };
+  window.demoMascot = main;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "spirit": "grid",
+  "base": "little_necromancer",
+  "renderer": "2d",
+  "costume": "grid_ghost",
+  "label": "Grid Ghost",
+  "palette": { "body": "#FFF8EA", "trim": "#FFB000", "eyes": "#FFB000" },
+  "props": ["electric_ring", "warning_glyph"],
+  "animation": "alert",
+  "reduced_motion": false
+}

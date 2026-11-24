@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "necromancer/appearance.schema.json",
+  "title": "Necromancer appearance config",
+  "description": "Declarative, renderer-agnostic costume config. Validated by mascot/appearance.py (stdlib). Spirit prompts never contain these values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spirit", "base", "renderer", "costume", "palette", "props", "animation", "reduced_motion"],
+  "properties": {
+    "spirit": { "enum": ["default", "enron", "wayback", "grid"] },
+    "base": { "const": "little_necromancer" },
+    "renderer": { "enum": ["2d", "3d"], "description": "Only 2d is implemented; 3d is reserved for after launch." },
+    "costume": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "label": { "type": "string" },
+    "palette": {
+      "type": "object", "additionalProperties": false, "required": ["body", "trim", "eyes"],
+      "properties": {
+        "body": { "$ref": "#/$defs/hex" }, "trim": { "$ref": "#/$defs/hex" }, "eyes": { "$ref": "#/$defs/hex" }
+      }
+    },
+    "props": { "type": "array", "uniqueItems": true,
+      "items": { "enum": ["paper", "lapels", "browser_halo", "pixel_accents", "electric_ring", "warning_glyph"] } },
+    "animation": { "enum": ["none", "idle", "summon", "shapeshift", "alert"] },
+    "reduced_motion": { "type": "boolean" },
+    "era_inspired": { "type": "boolean", "description": "Wayback only: palette is an era-style approximation, not taken from a snapshot." },
+    "snapshot": { "type": "object", "description": "Wayback only: the cached snapshot a palette was derived from.",
+      "required": ["url", "timestamp"], "additionalProperties": false,
+      "properties": { "url": { "type": "string" }, "timestamp": { "type": "string", "pattern": "^[0-9]{14}$" } } }
+  },
+  "$defs": { "hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" } }
+}

@@ -1,0 +1,11 @@
+{
+  "spirit": "enron",
+  "base": "little_necromancer",
+  "renderer": "2d",
+  "costume": "enron_ghost",
+  "label": "Enron Ghost",
+  "palette": { "body": "#F1F4F0", "trim": "#5E7F63", "eyes": "#7FB88A" },
+  "props": ["lapels", "paper"],
+  "animation": "shapeshift",
+  "reduced_motion": false
+}

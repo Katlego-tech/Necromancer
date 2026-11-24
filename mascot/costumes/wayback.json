@@ -1,0 +1,12 @@
+{
+  "spirit": "wayback",
+  "base": "little_necromancer",
+  "renderer": "2d",
+  "costume": "retro_web_era",
+  "label": "Wayback Medium (era-inspired)",
+  "palette": { "body": "#F3F0FF", "trim": "#8A6ED6", "eyes": "#7DF9FF" },
+  "props": ["browser_halo", "pixel_accents"],
+  "animation": "shapeshift",
+  "reduced_motion": false,
+  "era_inspired": true
+}

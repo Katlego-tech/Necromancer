@@ -1,0 +1,11 @@
+{
+  "spirit": "default",
+  "base": "little_necromancer",
+  "renderer": "2d",
+  "costume": "default",
+  "label": "Little Necromancer",
+  "palette": { "body": "#FFFFFF", "trim": "#8A6ED6", "eyes": "#7DF9FF" },
+  "props": [],
+  "animation": "shapeshift",
+  "reduced_motion": false
+}
