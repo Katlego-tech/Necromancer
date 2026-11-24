@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Grounding Rule Tests on Spirit Save",
+      "trigger": "PostFileSave",
+      "description": "Run grounding-rule tests whenever a spirit tool file is saved, to catch any path that bypasses tool return values.",
+      "matcher": "spirits/.*\\.py$",
+      "action": {
+        "type": "command",
+        "command": "python3 -m unittest tests.test_grounding 2>&1 | tail -20"
+      }
+    }
+  ]
+}

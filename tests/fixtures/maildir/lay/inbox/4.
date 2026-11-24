@@ -1,0 +1,6 @@
+Date: Wed, 05 Dec 2001 10:00:00 -0600 (CST)
+From: erin.synthetic@example.test
+To: frank.synthetic@example.test
+Subject: No message id here
+
+This message has no Message-ID header, so its evidence id falls back to the file path.

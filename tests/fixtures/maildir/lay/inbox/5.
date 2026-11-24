@@ -1,0 +1,7 @@
+Message-ID: <fx5@test>
+Date: not a real date
+From: erin.synthetic@example.test
+To: frank.synthetic@example.test
+Subject: Broken date header
+
+The date header on this synthetic email cannot be parsed.
