@@ -161,12 +161,12 @@ backend over a WebSocket; it does not contain business logic.
 - [x] **T2.6** Confirm grounding rule holds: spoken output cites sender, date, and verbatim quote.
 
 ### Milestone 3 — 2D Mascot (Days 7–8: 24–25 Nov)
-- [ ] **T3.1** Export transparent-background base sprite from reference images (or trace manually): `assets/sprites/idle.png`.
-- [ ] **T3.2** Produce `blink.png`, `talk_open.png`, `talk_closed.png`, `summon.png` from the same character.
-- [ ] **T3.3** Build `mascot/appearance.js` (or `.py` server-side): reads appearance JSON config, applies CSS classes and sprite swaps.
-- [ ] **T3.4** Connect mascot state to voice session events: idle → listening → speaking → summoning.
-- [ ] **T3.5** Add Enron costume JSON: `costumes/enron/theme.json`.
-- [ ] **T3.6** Test that mascot transitions do not obscure the evidence panel.
+- [x] **T3.1** Export transparent-background base sprite from reference images (or trace manually): `mascot/assets/sprites/idle.png`. (945x1216 RGBA cut-out of the source art, viewed on a light background; a web-sized `idle_web.png` is alongside. The original PNGs are untouched.)
+- [ ] **T3.2** Produce `blink.png`, `talk_open.png`, `talk_closed.png`, `summon.png` from the same character. (NOT MET: needs new artwork. Blink is an eyelid overlay, talking is an overlay approximation, summon is a glow and aura with no raised hands. See `mascot/README.md` for the artwork wish list. Deferred; the overlays are the demo fallback.)
+- [x] **T3.3** Build the appearance engine: reads appearance JSON config, applies CSS classes and palette changes. (Built as `mascot/mascot.js` plus `mascot/appearance.py` and `appearance.schema.json`, not `appearance.js`. Costume swap works without reloading; covered by Python and node tests.)
+- [x] **T3.4** Connect mascot state to voice session events: idle → listening → speaking → summoning. (`ui/mascot-slot.js`, tested with `tests/js/mascot_slot.test.js` and a replayed event log. Not seen live with a microphone or speaker.)
+- [x] **T3.5** Add Enron costume JSON. (At `mascot/costumes/enron.json`, validated against the schema; also default, wayback and grid costumes.)
+- [ ] **T3.6** Test that mascot transitions do not obscure the evidence panel. (OPEN: by design the mascot root clips its content (`overflow: hidden`, `contain: paint`), but no automated or visual test proves the evidence panel stays uncovered. Needs a layout test or a browser check.)
 
 ### Milestone 4 — Wayback Medium (Days 9–11: 26–28 Nov)
 - [x] **T4.1** Implement `spirits/wayback/tools.py`: `list_snapshots` and `read_snapshot` using CDX API.
