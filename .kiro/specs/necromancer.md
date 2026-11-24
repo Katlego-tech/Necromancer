@@ -169,12 +169,12 @@ backend over a WebSocket; it does not contain business logic.
 - [ ] **T3.6** Test that mascot transitions do not obscure the evidence panel.
 
 ### Milestone 4 — Wayback Medium (Days 9–11: 26–28 Nov)
-- [ ] **T4.1** Implement `spirits/wayback/tools.py`: `list_snapshots` and `read_snapshot` using CDX API.
+- [x] **T4.1** Implement `spirits/wayback/tools.py`: `list_snapshots` and `read_snapshot` using CDX API.
 - [ ] **T4.2** Build local snapshot cache: download and store one curated historical site (e.g., pets.com 1999).
 - [ ] **T4.3** Write `spirits/wayback/persona.py`: Wayback Medium persona prompt.
 - [ ] **T4.4** Add `summon("wayback")` path; test a voice question end-to-end.
 - [ ] **T4.5** Add Wayback costume JSON and browser-trim overlay sprite: `costumes/wayback/retro_1999.json`.
-- [ ] **T4.6** Write unit tests for Wayback tools; verify cached-only paths work offline.
+- [x] **T4.6** Write unit tests for Wayback tools; verify cached-only paths work offline.
 
 ### Milestone 5 — Grid Ghost (Days 12–13: 29–30 Nov)
 - [ ] **T5.1** Create `data/fixtures/grid_replay.json`: a realistic past outage record.
