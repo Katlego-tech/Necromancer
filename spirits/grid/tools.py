@@ -12,6 +12,7 @@ official documentation, so no request is built or sent. It returns the cold trai
 from __future__ import annotations
 import json
 import os
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 COLD = "The trail goes cold."
@@ -42,7 +43,7 @@ def _outage_result(e: dict) -> dict:
     needed = ("id", "area", "stage", "start")
     if any(not e.get(k) for k in needed):
         return _cold()
-    summary = f"Stage {e['stage']} load-shedding for {e['area']} starts at {e['start']}."
+    summary = f"Stage {e['stage']} for {e['area']} starts at {e['start']}."
     if e.get("end"):
         summary = summary[:-1] + f" and ends at {e['end']}."
     return {
@@ -53,6 +54,27 @@ def _outage_result(e: dict) -> dict:
     }
 
 
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+           "September", "October", "November", "December")
+def _parse(iso) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(iso) if isinstance(iso, str) else None
+    except ValueError:
+        return None
+def spoken_time(iso: str) -> Optional[str]:
+    """`2026-11-30T18:00:00+02:00` -> `6 PM on 30 November 2026`. Uses the record's own
+    local time (no UTC conversion). Minutes only when nonzero. None when unparseable."""
+    d = _parse(iso)
+    if d is None:
+        return None
+    hour = d.hour % 12 or 12
+    clock = f"{hour}:{d.minute:02d}" if d.minute else str(hour)
+    return f"{clock} {'AM' if d.hour < 12 else 'PM'} on {d.day} {_MONTHS[d.month - 1]} {d.year}"
+def _start_key(e: dict) -> tuple:
+    d = _parse(e["start"])
+    if d is not None and d.tzinfo is not None:
+        return (0, d.astimezone(timezone.utc), "")
+    return (1, datetime.min.replace(tzinfo=timezone.utc), str(e["start"]))
 def replay_outage(fixture_id: str, fixture_path: Optional[str] = None) -> dict:
     """Return one fixture event by id, or the cold trail."""
     for e in _events(_load(fixture_path)):
@@ -80,7 +102,7 @@ def current_stage(fixture_path: Optional[str] = None) -> dict:
 
 def next_outage(area: str, fixture_path: Optional[str] = None) -> dict:
     """Replay mode: the fixture event for `area` (case-insensitive exact name match)
-    with the earliest start string. Unknown area gives the cold trail."""
+    with the earliest start (parsed time; unparseable strings sort last). Unknown area gives the cold trail."""
     wanted = (area or "").strip().casefold()
     if not wanted:
         return _cold()
@@ -88,7 +110,7 @@ def next_outage(area: str, fixture_path: Optional[str] = None) -> dict:
             if str(e.get("area", "")).casefold() == wanted and e.get("start")]
     if not hits:
         return _cold()
-    return _outage_result(min(hits, key=lambda e: e["start"]))
+    return _outage_result(min(hits, key=_start_key))
 
 
 def live_current_stage(http_get: Optional[Callable[..., dict]] = None,

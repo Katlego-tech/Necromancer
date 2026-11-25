@@ -47,7 +47,7 @@ class GridToolsTest(unittest.TestCase):
     def test_replay_summary_is_verbatim(self):
         r = tools.replay_outage("t1", self.path)
         self.assertEqual(r["source"], "t1")
-        self.assertEqual(r["summary"], "Stage 3 load-shedding for Testville starts at "
+        self.assertEqual(r["summary"], "Stage 3 for Testville starts at "
                          "2000-01-01T18:07:00+02:00 and ends at 2000-01-01T20:41:00+02:00.")
         self.assertEqual(json.loads(r["content"]), FIX["events"][0])
 
@@ -57,6 +57,21 @@ class GridToolsTest(unittest.TestCase):
         for v in ("5", "Testville", "2000-01-01T09:13:00+02:00"):
             self.assertIn(v, r["summary"])
 
+    def test_next_outage_orders_by_instant_not_string(self):
+        fix = {"events": [
+            {"id": "z", "area": "A", "stage": "1", "start": "2000-01-01T22:00:00Z"},
+            {"id": "p", "area": "A", "stage": "1", "start": "2000-01-01T23:00:00+02:00"},
+            {"id": "bad", "area": "A", "stage": "1", "start": "garbage"}]}
+        p = os.path.join(self.tmp.name, "m.json")
+        with open(p, "w") as f:
+            json.dump(fix, f)
+        self.assertEqual(tools.next_outage("A", p)["source"], "p")
+    def test_spoken_time(self):
+        self.assertEqual(tools.spoken_time("2026-11-30T18:00:00+02:00"), "6 PM on 30 November 2026")
+        self.assertEqual(tools.spoken_time("2026-11-30T00:00:00+02:00"), "12 AM on 30 November 2026")
+        self.assertEqual(tools.spoken_time("2026-11-30T12:30:00+02:00"), "12:30 PM on 30 November 2026")
+        self.assertIsNone(tools.spoken_time("garbage"))
+        self.assertIsNone(tools.spoken_time(None))
     def test_current_stage(self):
         r = tools.current_stage(self.path)
         self.assertEqual(r["summary"], "The current stage is 3. Updated at 2000-01-01T00:00:00+02:00.")
