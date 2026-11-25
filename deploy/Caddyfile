@@ -6,8 +6,9 @@
 #  * Host is forwarded unchanged (Caddy's default). voice/server.py refuses a WebSocket upgrade when
 #    the Origin host differs from the Host it receives, so do NOT add `header_up Host ...`.
 #  * WebSocket upgrades pass through (Caddy handles Upgrade/Connection itself; no idle timeout).
-#  * The app sees every visitor as 127.0.0.1. The wrong-code lockout is therefore effectively the
-#    global limit (50 attempts per minute), see voice/guard.py.
+#  * The app sees every visitor as 127.0.0.1. With NECRO_TRUST_PROXY=1 (set in necromancer.env) it
+#    rate-limits wrong codes per visitor using the X-Forwarded-For entry Caddy writes (Caddy 2.5+ drops
+#    any value a client sends). Do NOT add trusted_proxies here: Caddy faces the internet directly.
 # To test without Let's Encrypt production rate limits, add a global block at the top:
 #   { acme_ca https://acme-staging-v02.api.letsencrypt.org/directory }
 

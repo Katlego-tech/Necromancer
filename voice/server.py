@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib
+import ipaddress
 import json
 import os
 import sys
@@ -32,6 +33,7 @@ EMITTER = web.AppKey("emitter", Emitter)
 MAX_MSG = 1 << 20
 ALERT_BUILDER = web.AppKey("alert_builder", object)
 REGISTRY = web.AppKey("registry", Registry)
+TRUST_PROXY = web.AppKey("trust_proxy", bool)
 MAX_ALERT_BODY = 1024
 SPIRIT_MODULES = {"enron": "spirits.enron.spirit", "wayback": "spirits.wayback.spirit",
                   "grid": "spirits.grid.spirit"}
@@ -65,6 +67,29 @@ def _visible(ev: dict, role: str) -> dict | None:
     return {k: v for k, v in ev.items() if k != "_audience"}
 
 
+
+_LOOPBACK = ("127.0.0.1", "::1")
+
+
+def client_key(request: web.Request) -> str:
+    """The address used for wrong-code rate limiting.
+
+    Behind the local Caddy proxy every request arrives from loopback, so all visitors would share
+    one lockout bucket. When NECRO_TRUST_PROXY is on AND the peer is loopback, use the right-most
+    X-Forwarded-For entry: Caddy 2.5+ discards any X-Forwarded-For a client sends and writes the
+    real peer address, so that entry cannot be forged. Anything else (setting off, a non-loopback
+    peer, a missing or malformed header) falls back to the peer address, so a server exposed
+    without the proxy cannot be fooled by a client-supplied header.
+    """
+    remote = request.remote or "?"
+    if not request.app.get(TRUST_PROXY) or remote not in _LOOPBACK:
+        return remote
+    last = request.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
+    try:
+        return str(ipaddress.ip_address(last))
+    except ValueError:
+        return remote
+
 async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> str | None:
     """Returns the role ('public' or 'judge') the code grants, or None after refusing the connection."""
     gate: AccessGate = request.app[GATE]
@@ -84,7 +109,7 @@ async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> str 
                 code = data.get("code")
     except (asyncio.TimeoutError, ValueError):
         pass
-    verdict, role = await gate.attempt_role(request.remote or "?", code)
+    verdict, role = await gate.attempt_role(client_key(request), code)
     if verdict == "ok":
         return role
     ev = ctl.paused_event("bad_code")
@@ -234,7 +259,7 @@ async def alert_http(request: web.Request) -> web.StreamResponse:
         auth = request.headers.get("Authorization", "")
         if code is None and auth.startswith("Bearer "):
             code = auth[7:].strip()
-        verdict = await gate.attempt(request.remote or "?", code)
+        verdict = await gate.attempt(client_key(request), code)
         if verdict == "locked":
             return web.json_response({"status": "locked"}, status=429)
         if verdict != "ok":
@@ -264,7 +289,7 @@ async def index(request: web.Request) -> web.StreamResponse:
 def build_app(registry: Registry, spirit_id: str, factory, *, record_path: str | None = None,
               gate: AccessGate | None = None, limits: Limits | None = None, caps: CapStore | None = None,
               usage_log: UsageLog | None = None, video_url: str | None = None, public: bool = False,
-              alert_builder=None, **session_kwargs) -> web.Application:
+              alert_builder=None, trust_proxy: bool = False, **session_kwargs) -> web.Application:
     emitter = Emitter(record_path)
     limits = limits or Limits()
     if caps is None:
@@ -283,6 +308,7 @@ def build_app(registry: Registry, spirit_id: str, factory, *, record_path: str |
     app[EMITTER] = emitter
     app[REGISTRY] = registry
     app[ALERT_BUILDER] = alert_builder
+    app[TRUST_PROXY] = trust_proxy
     app.router.add_get("/", index)
     app.router.add_get("/events", events_ws)
     app.router.add_get("/io", io_ws)
@@ -372,7 +398,7 @@ def main(argv=None) -> None:
     app = build_app(registry, args.spirit, BedrockFactory(), record_path=args.record,
                     gate=gate, limits=limits, caps=CapStore(args.caps_file, limits),
                     usage_log=UsageLog(args.usage_log), video_url=args.demo_video_url,
-                    public=args.public, turn_grace=12.0)
+                    public=args.public, trust_proxy=truthy("NECRO_TRUST_PROXY"), turn_grace=12.0)
     print(f"Open http://127.0.0.1:{args.port}/ui/index.html"
           f"?ws=ws://127.0.0.1:{args.port}/events&io=ws://127.0.0.1:{args.port}/io")
     web.run_app(app, host="127.0.0.1", port=args.port, print=None)

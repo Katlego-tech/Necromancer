@@ -165,6 +165,37 @@ class AccessTest(unittest.IsolatedAsyncioTestCase):
             await slow.attempt("r", CODE)
         self.assertEqual(slept, [1.0])
 
+    async def _lock_out(self, xff):
+        for _ in range(5):
+            ws = await self.client.ws_connect("/io", headers={"X-Forwarded-For": xff})
+            await ws.receive()
+            await auth(ws, "bad")
+            await close_code(ws)
+    async def _try(self, xff):
+        ws = await self.client.ws_connect("/io", headers={"X-Forwarded-For": xff})
+        await ws.receive()
+        await auth(ws)
+        try:  # a correct code gets no reply on /io; a rejected one gets a paused event at once
+            msg = await asyncio.wait_for(ws.receive(), 1.0)
+        except asyncio.TimeoutError:
+            await ws.close()
+            return {"accepted": True}
+        await ws.close()
+        return json.loads(msg.data) if msg.type == WSMsgType.TEXT else {"closed": ws.close_code}
+    async def test_behind_trusted_proxy_one_visitors_bad_codes_do_not_lock_out_another(self):
+        self.client = await start(gate=AccessGate(CODE, delay=0, clock=Clock()), trust_proxy=True)
+        await self._lock_out("203.0.113.5")
+        msg = await self._try("198.51.100.7")          # a different visitor (e.g. a judge)
+        self.assertEqual(msg, {"accepted": True})
+        locked = await self._try("203.0.113.5")        # the guesser is still locked out
+        self.assertEqual(locked["reason"], "bad_code")
+        self.assertIn("try later", locked["message"])
+    async def test_without_trust_proxy_a_forwarded_header_cannot_dodge_the_lockout(self):
+        self.client = await start(gate=AccessGate(CODE, delay=0, clock=Clock()))
+        await self._lock_out("203.0.113.5")
+        msg = await self._try("198.51.100.7")          # header ignored: same peer, still locked
+        self.assertEqual(msg["reason"], "bad_code")
+        self.assertIn("try later", msg["message"])
     async def test_locked_over_websocket_closes_4429(self):
         gate = AccessGate(CODE, delay=0, clock=Clock())
         self.client = await start(gate=gate)

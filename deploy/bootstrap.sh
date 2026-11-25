@@ -42,6 +42,8 @@ fi
 git -C "$APP_DIR" checkout --detach "$REPO_REF" 2>/dev/null || git -C "$APP_DIR" checkout --detach "origin/$REPO_REF"
 # Code is owned by root (the service cannot modify it); only var/ and data/ are writable by the service.
 install -d -o necro -g necro -m 750 "$APP_DIR/var" "$APP_DIR/data" "$APP_DIR/data/enron" "$APP_DIR/data/wayback"
+# Emergency switch directory (NECRO_CONTROL_DIR): `touch disable-judge` or `disable-public` here cuts a code off.
+install -d -o necro -g necro -m 750 "$APP_DIR/var/control"
 
 echo "== 4/6 Python 3.12 venv and pinned requirements"
 [ -x "$APP_DIR/.venv/bin/python" ] || python3.12 -m venv "$APP_DIR/.venv"

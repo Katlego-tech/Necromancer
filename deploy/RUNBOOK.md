@@ -113,13 +113,16 @@ sudo -u necro /opt/necromancer/.venv/bin/python /opt/necromancer/scripts/prewarm
 ## 6. Access code and settings **(on the instance)**
 
 ```bash
-sudo /opt/necromancer/deploy/set_access_code.sh --no-restart     # prints the code once; copy it now
+sudo /opt/necromancer/deploy/set_access_code.sh --no-restart          # public code, printed once; copy it
+sudo /opt/necromancer/deploy/set_access_code.sh --judge --no-restart  # JUDGE code, printed once; copy it into the Devpost form only
 sudo nano /etc/necromancer/necromancer.env                       # check caps and NECRO_DEMO_VIDEO_URL
 echo "NECRO_SITE=necro.example.com" | sudo tee /etc/necromancer/caddy.env     # your real hostname
 ```
 
 The code and limits live only in `/etc/necromancer/necromancer.env` (root, mode 600), never in the repo.
-Set the caps from the measured price once T7.5 is done.
+Set the caps from the measured price once T7.5 is done. Judges use their own code and allowance
+(`NECRO_JUDGE_*`); the public caps never block them. The judge code expires at `NECRO_JUDGE_EXPIRES`.
+Keep `NECRO_TRUST_PROXY=1` so one visitor's wrong guesses cannot lock out the judges.
 
 ## 7. Start **(on the instance)**
 
@@ -151,7 +154,10 @@ Then **(on the instance)**: `tail -n 3 /opt/necromancer/var/usage.jsonl` (this i
 cat /opt/necromancer/var/caps.json                      # sessions used today and in total
 tail -n 5 /opt/necromancer/var/usage.jsonl
 sudo systemctl stop necromancer                         # pause everything now (the site shows an error page)
-sudo /opt/necromancer/deploy/set_access_code.sh         # new code; the old one stops working at once
+sudo /opt/necromancer/deploy/set_access_code.sh         # new public code; the old one stops working at once
+sudo -u necro touch /opt/necromancer/var/control/disable-public   # cut off the PUBLIC code now, no restart
+sudo -u necro touch /opt/necromancer/var/control/disable-judge    # cut off the JUDGE code now (only if it leaked)
+sudo rm /opt/necromancer/var/control/disable-public               # switch it back on
 ```
 
 ## 11. Update and roll back **(on the instance)**
