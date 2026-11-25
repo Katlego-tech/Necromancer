@@ -116,6 +116,25 @@ class SwitchAndExpiryTest(unittest.IsolatedAsyncioTestCase):
             open(os.path.join(d, "disable-public"), "w").close()
             self.assertEqual(await g.attempt_role("r", CODE), ("bad", None))
 
+    async def test_missing_control_dir_means_not_switched_off(self):
+        with tempfile.TemporaryDirectory() as d:
+            g = gate(control_dir=os.path.join(d, "does-not-exist"))
+            self.assertTrue(g.allowed("judge"))
+            self.assertTrue(g.allowed("public"))
+    async def test_unreadable_control_dir_fails_closed_for_both_roles(self):
+        if os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        with tempfile.TemporaryDirectory() as d:
+            control = os.path.join(d, "control")
+            os.mkdir(control)
+            open(os.path.join(control, "disable-judge"), "w").close()
+            g = gate(control_dir=control)
+            os.chmod(control, 0)
+            try:
+                self.assertFalse(g.allowed("judge"))      # a disable file we cannot read still disables
+                self.assertFalse(g.allowed("public"))     # and we cannot tell about the other role either
+            finally:
+                os.chmod(control, 0o700)                  # so the temp dir can be removed
     async def test_expiry(self):
         now = [datetime.datetime(2027, 1, 29, 23, 59, tzinfo=datetime.timezone(datetime.timedelta(hours=-8)))]
         g = gate(judge_expires=parse_expiry(None), now=lambda: now[0])

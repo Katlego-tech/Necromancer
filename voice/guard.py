@@ -214,8 +214,13 @@ class AccessGate:
             return False
         if self.control_dir:
             try:
-                if os.path.exists(os.path.join(self.control_dir, "disable-" + role)):
-                    return False
+                # os.path.exists would swallow a permission error and report "not there", i.e. fail
+                # OPEN. A missing file or directory means "not switched off"; any other error means
+                # we cannot tell, so the role is treated as switched off.
+                os.stat(os.path.join(self.control_dir, "disable-" + role))
+                return False
+            except (FileNotFoundError, NotADirectoryError):
+                pass
             except (OSError, ValueError):
                 return False  # cannot tell: fail closed
         if role == "judge" and self.judge_expires is not None and self.now() >= self.judge_expires:
