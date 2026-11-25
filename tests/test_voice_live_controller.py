@@ -98,6 +98,7 @@ class LimitTest(LiveBase):
 
     async def test_idle_timeout_and_resets(self):
         self.build(limits=Limits(max_session_seconds=480, idle_seconds=50, disconnect_grace=0.02))
+        self.live.client_joined()
         await self.live.ensure_started()
         s, st = self.sessions[0], self.factory.streams[0]
         # raw mic audio alone is not activity
@@ -142,6 +143,31 @@ class LimitTest(LiveBase):
         self.assertTrue(self.factory.streams[0].closed)
         await self.assert_clean()
 
+    async def test_join_during_disconnect_stop_does_not_abort_stop(self):
+        self.build()
+        await self.live.ensure_started()
+        self.live.client_joined()
+        gate = asyncio.Event()
+        real_close = self.sessions[0].close
+        async def slow_close():
+            await gate.wait()
+            await real_close()
+        self.sessions[0].close = slow_close
+        self.live.client_left()
+        await wait_for(lambda: self.live.state == "ending")
+        self.live.client_joined()
+        gate.set()
+        await wait_for(lambda: self.live.state == "off")
+        self.assert_one_end("disconnected")
+        self.assertTrue(self.factory.streams[0].closed)
+        await self.assert_clean()
+    async def test_start_finishing_with_no_clients_arms_disconnect_timer(self):
+        self.build()
+        self.assertEqual(self.live.clients, 0)
+        await self.live.ensure_started()
+        await wait_for(lambda: self.live.state == "off")
+        self.assert_one_end("disconnected")
+        await self.assert_clean()
     async def test_restart_after_limit_and_refused_by_cap(self):
         self.build(limits=Limits(max_session_seconds=100, idle_seconds=50, disconnect_grace=0.02,
                                  daily_cap=2, total_cap=100))
@@ -223,6 +249,7 @@ class StopTest(LiveBase):
         reg.register(make_spirit("enron"))
         reg.register(echo_spirit())
         self.build(registry=reg)
+        self.live.client_joined()
         await self.live.ensure_started()
         gate = asyncio.Event()
         real_open = self.factory.open

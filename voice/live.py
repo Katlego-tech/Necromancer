@@ -137,6 +137,8 @@ class LiveController:
                 self.last_pause = None
                 self.state = "live"
                 self._watchdog = asyncio.create_task(self._watch(session, self._started))
+                if self.clients == 0 and self._disc is None:
+                    self._disc = asyncio.create_task(self._disconnect_timer())
                 return True
             finally:
                 if self.state == "starting":
@@ -199,7 +201,8 @@ class LiveController:
     # ------------------------------------------------------------ clients
     def client_joined(self) -> None:
         self.clients += 1
-        if self._disc is not None:
+        # Only while live: once stop() has begun, _disc may be the task running it.
+        if self._disc is not None and self.state == "live":
             self._disc.cancel()
             self._disc = None
 

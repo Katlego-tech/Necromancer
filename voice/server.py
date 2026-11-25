@@ -44,7 +44,10 @@ async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> bool
     if not gate.required:
         return True
     ctl: LiveController = request.app[SESSION]
-    await ws.send_str(json.dumps(ctl.paused_event("code_required")))
+    try:
+        await ws.send_str(json.dumps(ctl.paused_event("code_required")))
+    except ConnectionResetError:
+        return False
     code = None
     try:
         msg = await ws.receive(timeout=5)
@@ -60,8 +63,11 @@ async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> bool
     ev = ctl.paused_event("bad_code")
     if verdict == "locked":
         ev["message"] = "Too many attempts, try later."
-    await ws.send_str(json.dumps(ev))
-    await ws.close(code=4429 if verdict == "locked" else 4401)
+    try:
+        await ws.send_str(json.dumps(ev))
+        await ws.close(code=4429 if verdict == "locked" else 4401)
+    except ConnectionResetError:
+        pass
     return False
 
 
@@ -152,6 +158,9 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
                 except (ValueError, AttributeError):
                     emitter.error("ignored malformed /io message")
     finally:
+        for j in list(jobs):
+            j.cancel()
+        await asyncio.gather(*jobs, return_exceptions=True)
         session.client_left()
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
