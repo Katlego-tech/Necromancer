@@ -10,3 +10,4 @@ data/wayback/
 *.db
 .worktrees/
 .agents/
+var/

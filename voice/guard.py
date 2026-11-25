@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import datetime
+import asyncio
 import fcntl
+import hashlib
+import hmac
 import json
 import os
 import tempfile
 import threading
+import time
+from collections import deque
 from dataclasses import dataclass
 
 
@@ -118,3 +123,61 @@ class CapStore:
             return self._locked(go)
         except (_Corrupt, OSError):
             return {"daily_remaining": 0, "total_remaining": 0}
+
+
+MAX_CODE_CHARS = 256
+
+
+class AccessGate:
+    """Shared access code. Keeps only the sha256 digest, never the raw code."""
+
+    def __init__(self, code: str | None, *, fail_limit: int = 5, window: float = 60.0,
+                 global_limit: int = 50, delay: float = 1.0, clock=time.monotonic):
+        self._digest = hashlib.sha256(code.encode()).digest() if code is not None else None
+        self.fail_limit = fail_limit
+        self.window = window
+        self.global_limit = global_limit
+        self.delay = delay
+        self.clock = clock
+        self._fails: dict[str, deque] = {}
+        self._global: deque = deque()
+
+    @property
+    def required(self) -> bool:
+        return self._digest is not None
+
+    def check(self, candidate) -> bool:
+        if self._digest is None:
+            return True
+        if not isinstance(candidate, str) or len(candidate) > MAX_CODE_CHARS:
+            return False
+        return hmac.compare_digest(hashlib.sha256(candidate.encode()).digest(), self._digest)
+
+    def _prune(self, q: deque, now: float) -> None:
+        while q and now - q[0] >= self.window:
+            q.popleft()
+
+    def locked(self, remote: str) -> bool:
+        now = self.clock()
+        self._prune(self._global, now)
+        q = self._fails.get(remote)
+        if q is not None:
+            self._prune(q, now)
+            if not q:
+                del self._fails[remote]
+        return len(self._global) >= self.global_limit or (q is not None and len(q) >= self.fail_limit)
+
+    async def attempt(self, remote: str, candidate) -> str:
+        """Returns 'ok', 'bad' or 'locked'. Locked attempts are not compared."""
+        if self._digest is None:
+            return "ok"
+        if self.locked(remote):
+            return "locked"
+        if self.check(candidate):
+            return "ok"
+        now = self.clock()
+        self._fails.setdefault(remote, deque()).append(now)
+        self._global.append(now)
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        return "bad"
