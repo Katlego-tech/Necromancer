@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import collections
+import itertools
 import json
 import time
 import uuid
@@ -18,6 +19,7 @@ from voice import events
 from voice.emitter import Emitter
 from voice.grounding_check import check_turn, is_cold
 from voice.summon import SUMMON_TOOL, DEFAULT_REGISTRY, Registry, Spirit, summon_tool_def
+from voice.usage import UsageMeter
 
 MAX_TOOL_CONTENT = 40000
 FILLER_TEXT = "Tell the user in one short sentence that you are still searching."
@@ -29,6 +31,9 @@ class _ConnClosed(Exception):
     pass
 
 
+_conn_counter = itertools.count(1)
+
+
 class _Conn:
     """One Bedrock stream plus the state that belongs to it."""
 
@@ -37,6 +42,7 @@ class _Conn:
         self.spirit = spirit
         self.tools = tools
         self.started = started
+        self.key = next(_conn_counter)         # unique per stream, used by the usage meter
         self.prompt = str(uuid.uuid4())
         self.audio_name = str(uuid.uuid4())
         self.lock = asyncio.Lock()
@@ -52,7 +58,8 @@ class VoiceSession:
                  clock=time.monotonic, frame_seconds: float = 0.064, tool_timeout: float = 20.0,
                  filler_after: float = 1.5, renew_after: float = 420.0,
                  close_cap: float = 10.0, history_cap: int = 200_000,
-                 summon_grace: float = 5.0, turn_grace: float = 0.0):
+                 summon_grace: float = 5.0, turn_grace: float = 0.0,
+                 reader_grace: float = 2.0):
         self.registry = registry or DEFAULT_REGISTRY
         self.factory = factory
         self.emitter = emitter
@@ -65,6 +72,9 @@ class VoiceSession:
         self.history_cap = history_cap
         self.summon_grace = summon_grace
         self.turn_grace = turn_grace            # wait this long after an END_TURN text block
+        self.reader_grace = reader_grace        # wait this long for the last usageEvent after sessionEnd
+        self.usage = UsageMeter()
+        self.last_activity = clock()
         self.spirit = self.registry.get(spirit_id)
         self.transcript: list[dict] = []        # {"role": "user"|"spirit", "text": str}, FINAL only
         self.tool_results: list[dict] = []      # raw tool dicts, as returned by handlers
@@ -100,6 +110,9 @@ class VoiceSession:
         self._set_state("listening", force=True)
         self._pump_task = asyncio.create_task(self._pump())
 
+    def _touch(self) -> None:
+        self.last_activity = self.clock()
+
     def feed_audio(self, pcm: bytes) -> None:
         self._mic.append(pcm)
 
@@ -114,6 +127,7 @@ class VoiceSession:
         """A typed user turn: shown in the transcript, then sent to the model."""
         if self._turn_timer:
             self._close_turn()
+        self._touch()
         self._user_n += 1
         self._barged = False
         self.emitter.transcript(f"u{self._user_n}", "user", text, True)
@@ -143,6 +157,12 @@ class VoiceSession:
         if self._pump_task:
             self._pump_task.cancel()
             await asyncio.gather(self._pump_task, return_exceptions=True)
+        ht = self._handover_task
+        if ht is not None:
+            ht.cancel()
+            await asyncio.gather(ht, return_exceptions=True)
+            self._handover_task = None
+            self._handover_active = False
         await self.drain()
         if self._active:
             await self._close_conn(self._active)
@@ -203,7 +223,7 @@ class VoiceSession:
                 await self._send(conn, *events.history_blocks(
                     conn.prompt, history, lambda: str(uuid.uuid4())))
             await self._send(conn, events.audio_start(conn.prompt, conn.audio_name))
-        except Exception:
+        except BaseException:
             conn.closed = True
             await stream.close()
             raise
@@ -232,6 +252,8 @@ class VoiceSession:
             conn.closed = True
         await conn.stream.close()
         if conn.reader and conn.reader is not asyncio.current_task():
+            if self.reader_grace > 0:
+                await asyncio.wait({conn.reader}, timeout=self.reader_grace)
             conn.reader.cancel()
             await asyncio.gather(conn.reader, return_exceptions=True)
 
@@ -320,6 +342,9 @@ class VoiceSession:
                 self._set_state("idle")
 
     async def _on_event(self, conn: _Conn, name: str, body: dict) -> None:
+        if name == "usageEvent":
+            self.usage.record(conn.key, body)
+            return
         if conn is not self._active:
             return
         if name == "completionStart":
@@ -342,6 +367,7 @@ class VoiceSession:
             self._on_text(conn, body)
         elif name == "audioOutput":
             pcm = base64.b64decode(body.get("content", ""))
+            self._touch()
             self._cancel_turn_timer()
             self.audio_bytes += len(pcm)
             if pcm and self.state != "speaking":
@@ -375,6 +401,8 @@ class VoiceSession:
         final = block["stage"] in (None, "FINAL")
         block["text"].append(text)
         if role == "USER":
+            if text.strip():
+                self._touch()
             if block["turn"] is None:
                 if self._turn_timer:
                     self._close_turn()

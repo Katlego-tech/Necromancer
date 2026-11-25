@@ -86,6 +86,22 @@ Required: `message` (string). Listed under "Protocol issues".
 {"type":"error","message":"tool timed out"}
 ```
 
+### paused
+Sent when live voice is off. Required: `reason` (one of `daily_cap`, `total_cap`, `session_limit`,
+`idle_timeout`, `bad_code`, `code_required`, `disconnected`, `shutdown`, `not_started`), `message`
+(non-empty string written by the server, never user content), `can_restart` (boolean).
+Optional: `video_url` (null or a string starting with `https://`).
+A later `state` event other than `idle` means live voice resumed. There is no separate resume event.
+```json
+{"type":"paused","reason":"session_limit","message":"The live session reached its time limit.","can_restart":true}
+```
+```json
+{"type":"paused","reason":"daily_cap","message":"Today's live voice sessions are used up. Come back tomorrow.","can_restart":false,"video_url":"https://example.com/demo.mp4"}
+```
+```json
+{"type":"paused","reason":"not_started","message":"Live voice is not running.","can_restart":true,"video_url":null}
+```
+
 ## Invalid examples (must be rejected)
 
 ```json-invalid
@@ -102,6 +118,15 @@ Required: `message` (string). Listed under "Protocol issues".
 ```
 ```json-invalid
 {"type":"nope"}
+```
+```json-invalid
+{"type":"paused","reason":"coffee_break","message":"x","can_restart":true}
+```
+```json-invalid
+{"type":"paused","reason":"idle_timeout","message":"x"}
+```
+```json-invalid
+{"type":"paused","reason":"idle_timeout","message":"x","can_restart":true,"video_url":"javascript:alert(1)"}
 ```
 
 ## Mascot interface (Track C, `mascot/mascot.js`)

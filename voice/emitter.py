@@ -53,6 +53,12 @@ class Emitter:
     def error(self, message: str) -> bool:
         return self.emit({"type": "error", "message": message})
 
+    def paused(self, reason: str, message: str, can_restart: bool, video_url: str | None = None) -> bool:
+        ev = {"type": "paused", "reason": reason, "message": message, "can_restart": can_restart}
+        if video_url is not None:
+            ev["video_url"] = video_url
+        return self.emit(ev)
+
     def close(self) -> None:
         if self._record:
             self._record.close()

@@ -12,6 +12,8 @@ REQUIRED_META = {
     "snapshot": ["url", "timestamp"],
     "grid": ["stage", "area", "start"],
 }
+PAUSED_REASONS = ["daily_cap", "total_cap", "session_limit", "idle_timeout", "bad_code",
+                  "code_required", "disconnected", "shutdown", "not_started"]
 MAX_TEXT = 2000000
 
 
@@ -79,6 +81,16 @@ def validate_event(ev) -> str | None:
         err = _meta_error(ev["kind"], ev.get("metadata"), cold)
         if err:
             return err
+    elif t == "paused":
+        if ev.get("reason") not in PAUSED_REASONS:
+            return "unknown pause reason"
+        if not isinstance(ev.get("message"), str) or not ev["message"]:
+            return "message must be a non-empty string"
+        if not isinstance(ev.get("can_restart"), bool):
+            return "can_restart must be a boolean"
+        url = ev.get("video_url")
+        if url is not None and not (isinstance(url, str) and url.startswith("https://")):
+            return "video_url must be null or an https URL"
     elif t == "error":
         if not isinstance(ev.get("message"), str):
             return "message must be a string"

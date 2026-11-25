@@ -70,6 +70,29 @@ class ProtocolCheckTest(unittest.TestCase):
         self.assertIsNotNone(validate_event({"type": "evidence", "kind": "email", "source": None, "content": "x"}))
 
 
+class PausedEventTest(unittest.TestCase):
+    BASE = {"type": "paused", "reason": "idle_timeout", "message": "m", "can_restart": True}
+
+    def test_valid(self):
+        self.assertIsNone(validate_event(self.BASE))
+        self.assertIsNone(validate_event({**self.BASE, "video_url": None}))
+        self.assertIsNone(validate_event({**self.BASE, "video_url": "https://example.com/v"}))
+
+    def test_invalid(self):
+        for patch in ({"reason": "nap"}, {"message": ""}, {"message": 3}, {"can_restart": "yes"},
+                      {"video_url": "javascript:alert(1)"}, {"video_url": "http://x"}, {"video_url": 5}):
+            self.assertIsNotNone(validate_event({**self.BASE, **patch}), patch)
+        self.assertIsNotNone(validate_event({k: v for k, v in self.BASE.items() if k != "can_restart"}))
+
+    def test_emitter_helper(self):
+        em = Emitter()
+        self.assertTrue(em.paused("daily_cap", "m", False))
+        self.assertTrue(em.paused("daily_cap", "m", False, "https://example.com/v"))
+        self.assertEqual(em.events[1]["video_url"], "https://example.com/v")
+        self.assertFalse(em.paused("bogus", "m", False))
+        self.assertEqual(em.events[-1]["type"], "error")
+
+
 class EmitterTest(unittest.TestCase):
     def test_invalid_event_is_replaced_by_error(self):
         em = Emitter()

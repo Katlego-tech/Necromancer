@@ -105,3 +105,15 @@ test("UI sources never use unsafe sinks", () => {
     assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\s*\(|new Function/.test(s), f);
   }
 });
+
+test("paused event: same accept/reject rules as the Python validator", () => {
+  const base = { type: "paused", reason: "idle_timeout", message: "m", can_restart: true };
+  assert.ok(P.REASONS.length === 9);
+  [base, { ...base, video_url: null }, { ...base, video_url: "https://example.com/v" }]
+    .forEach(e => assert.ok(P.validateEvent(e).ok, JSON.stringify(e)));
+  [{ reason: "nap" }, { message: "" }, { message: 3 }, { can_restart: "yes" },
+   { video_url: "javascript:alert(1)" }, { video_url: "http://x" }, { video_url: 5 }]
+    .forEach(p => assert.strictEqual(P.validateEvent({ ...base, ...p }).ok, false, JSON.stringify(p)));
+  const { can_restart, ...noRestart } = base;
+  assert.strictEqual(P.validateEvent(noRestart).ok, false);
+});

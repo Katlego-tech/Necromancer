@@ -11,6 +11,8 @@
     snapshot: ["url", "timestamp"],
     grid: ["stage", "area", "start"]
   };
+  var REASONS = ["daily_cap", "total_cap", "session_limit", "idle_timeout", "bad_code",
+                 "code_required", "disconnected", "shutdown", "not_started"];
   var MAX_TEXT = 2000000;
 
   function isObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
@@ -71,6 +73,15 @@
         if (m) return fail(m);
         break;
       }
+      case "paused":
+        if (REASONS.indexOf(ev.reason) < 0) return fail("unknown pause reason");
+        if (!isStr(ev.message) || !ev.message) return fail("message must be a non-empty string");
+        if (typeof ev.can_restart !== "boolean") return fail("can_restart must be a boolean");
+        if (ev.video_url !== undefined && ev.video_url !== null &&
+            !(isStr(ev.video_url) && /^https:\/\//.test(ev.video_url))) {
+          return fail("video_url must be null or an https URL");
+        }
+        break;
       case "error":
         if (!isStr(ev.message)) return fail("message must be a string");
         break;
@@ -100,7 +111,7 @@
     return out;
   }
 
-  var api = { STATES: STATES, SPIRITS: SPIRITS, ROLES: ROLES, KINDS: KINDS, REQUIRED_META: REQUIRED_META,
+  var api = { STATES: STATES, SPIRITS: SPIRITS, ROLES: ROLES, KINDS: KINDS, REASONS: REASONS, REQUIRED_META: REQUIRED_META,
               validateEvent: validateEvent, parseFrame: parseFrame, splitExcerpt: splitExcerpt };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NecroProtocol = api;
