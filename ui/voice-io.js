@@ -15,22 +15,42 @@
     return;
   }
   var ws = null, playCtx = null, nextTime = 0, sources = [];
-  var queue = [];
+  var queue = [], denied = false, restartBtn = doc.getElementById("restart");
+  var DENIED = [4401, 4429];
 
   function slot() { return window.NecroMascotSlot; }
 
   function connect() {
-    ws = new WebSocket(url);
-    ws.binaryType = "arraybuffer";
-    ws.onopen = function () { queue.splice(0).forEach(function (m) { ws.send(m); }); };
-    ws.onmessage = function (m) {
+    denied = false;
+    var mine = ws = new WebSocket(url);
+    mine.binaryType = "arraybuffer";
+    mine.onopen = function () {
+      var code = window.NecroAuth && window.NecroAuth.get();
+      if (code) mine.send(JSON.stringify({ type: "auth", code: code }));
+      queue.splice(0).forEach(function (m) { mine.send(m); });
+    };
+    mine.onmessage = function (m) {
       if (typeof m.data === "string") {
         try { if (JSON.parse(m.data).type === "clear") clearPlayback(); } catch (e) { /* ignore */ }
       } else {
         play(m.data);
       }
     };
-    ws.onclose = function () { setTimeout(connect, 1000); };
+    mine.onclose = function (ev) {
+      if (mine !== ws) return;
+      if (ev && DENIED.indexOf(ev.code) >= 0) { denied = true; return; }
+      setTimeout(connect, 1000);
+    };
+  }
+  if (window.NecroAuth) {
+    window.NecroAuth.onChange(function () {
+      var old = ws; ws = null;
+      if (old) { try { old.close(); } catch (e) { /* already closed */ } }
+      connect();
+    });
+  }
+  if (restartBtn) {
+    restartBtn.addEventListener("click", function () { ensurePlayCtx(); send(JSON.stringify({ type: "start" })); });
   }
 
   function send(msg) {

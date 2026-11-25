@@ -10,6 +10,8 @@ and talks to it with aiohttp (already in the project venv).
 `layout`  (free) mock session: for every mascot state and several viewport sizes, checks that no
           part of the mascot, after clipping by its ancestors, overlaps the transcript or evidence
           panel (spec T3.6); also checks reduced-motion stops animations.
+`paused`  (free) mock page ?mock=paused: the paused banner is visible, the evidence stays readable and
+          not covered, the restart button is visible; screenshot saved. `layout` repeats it at every viewport.
 `live`    (billed Bedrock calls) starts the real server, types one question into the page, records
           the mascot states, WebSocket traffic, transcript and evidence the browser actually showed.
 `--mic`   also clicks "Start microphone" with Chrome's FAKE microphone (a beep, not speech) to prove
@@ -108,6 +110,22 @@ OVERLAP_JS = r"""
 """
 
 
+PAUSED_JS = r"""
+(function () {
+  function vis(id) { var e = document.getElementById(id); if (!e || e.hidden) return false;
+    var b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && getComputedStyle(e).visibility !== "hidden"; }
+  var ev = document.getElementById("evidence-body");
+  ev.scrollIntoView({block: "center"});
+  var b = ev.getBoundingClientRect();
+  var top = document.elementFromPoint(b.left + b.width / 2, Math.min(b.top + 10, b.bottom - 1));
+  return {banner: vis("paused-banner"), restart: vis("restart"), code_form: vis("code-form"),
+          msg: document.getElementById("paused-msg").textContent,
+          live: document.body.getAttribute("data-live"),
+          evidence_chars: ev.textContent.length,
+          evidence_not_covered: !!top && document.getElementById("evidence-region").contains(top),
+          mic_hidden: getComputedStyle(document.getElementById("mic")).display === "none"};
+})()
+"""
 class CDP:
     def __init__(self, ws):
         self.ws, self.n, self.pending, self.problems = ws, 0, {}, []
@@ -189,6 +207,8 @@ async def open_page(chrome, port, mic):
     cdp = CDP(await session.ws_connect(wsurl, max_msg_size=0))
     for m in ("Page.enable", "Runtime.enable", "Log.enable"):
         await cdp.send(m)
+    await cdp.send("Network.enable")
+    await cdp.send("Network.setCacheDisabled", cacheDisabled=True)
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", source=WS_HOOK)
     return proc, session, cdp
 
@@ -206,6 +226,41 @@ async def navigate(cdp, url, wait_js="document.readyState==='complete'", timeout
     raise TimeoutError("page did not load: " + url)
 
 
+async def check_paused(cdp, url, tag, out):
+    await navigate(cdp, url)
+    r = None
+    for _ in range(40):
+        await asyncio.sleep(0.25)
+        r = await cdp.eval(PAUSED_JS)
+        if r["banner"]:
+            break
+    await asyncio.sleep(0.3)
+    r = await cdp.eval(PAUSED_JS)
+    await cdp.shot(f"{out}/paused_{tag}.png")
+    r["ok"] = bool(r["banner"] and r["restart"] and not r["code_form"] and r["live"] == "paused"
+                   and r["evidence_chars"] > 0 and r["evidence_not_covered"] and r["mic_hidden"])
+    r["viewport"] = tag
+    return r
+async def with_http_chrome(args, fn):
+    proc, session, cdp = await open_page(find_chrome(args.chrome), args.cdp_port, False)
+    srv = subprocess.Popen([sys.executable, "-m", "http.server", str(args.http_port), "--bind", "127.0.0.1"],
+                           cwd=str(ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        await asyncio.sleep(1)
+        return await fn(cdp)
+    finally:
+        srv.kill()
+        await session.close()
+        proc.kill()
+async def run_paused(args, out):
+    base = f"http://127.0.0.1:{args.http_port}/ui/index.html?mock=paused"
+    async def go(cdp):
+        rows = []
+        for w, h in VIEWPORTS if args.all_viewports else VIEWPORTS[:1]:
+            await cdp.send("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1, mobile=w < 600)
+            rows.append(await check_paused(cdp, base, f"{w}x{h}", out))
+        return {"rows": rows, "ok": all(r["ok"] for r in rows), "console_problems": cdp.problems}
+    return await with_http_chrome(args, go)
 async def run_layout(args, out):
     proc, session, cdp = await open_page(find_chrome(args.chrome), args.cdp_port, False)
     base = f"http://127.0.0.1:{args.http_port}/ui/index.html?mock=enron"
@@ -238,6 +293,10 @@ async def run_layout(args, out):
         await asyncio.sleep(0.5)
         results["reduced_motion"] = {"running_animations": (await cdp.eval(OVERLAP_JS))["animations"]}
         results["console_problems"] = cdp.problems
+        results["paused"] = []
+        for w, h in VIEWPORTS:
+            await cdp.send("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1, mobile=w < 600)
+            results["paused"].append(await check_paused(cdp, base.replace("mock=enron", "mock=paused"), f"{w}x{h}", out))
     finally:
         srv.kill()
         await session.close()
@@ -306,9 +365,10 @@ async def run_live(args, out):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["layout", "live"])
+    ap.add_argument("mode", choices=["layout", "paused", "live"])
     ap.add_argument("--db", default=str(ROOT / "data/enron/enron.sqlite"))
     ap.add_argument("--chrome")
+    ap.add_argument("--all-viewports", action="store_true", help="paused: check all four viewports")
     ap.add_argument("--mic", action="store_true")
     ap.add_argument("--out", default="/tmp/necro_browser")
     ap.add_argument("--http-port", type=int, default=8791)
@@ -317,9 +377,14 @@ def main():
     args = ap.parse_args()
     out = args.out
     os.makedirs(out, exist_ok=True)
-    res = asyncio.run(run_layout(args, out) if args.mode == "layout" else run_live(args, out))
+    runner = {"layout": run_layout, "paused": run_paused, "live": run_live}[args.mode]
+    res = asyncio.run(runner(args, out))
     Path(f"{out}/report_{args.mode}.json").write_text(json.dumps(res, indent=2))
     print(json.dumps(res, indent=2)[:6000])
+    if args.mode == "paused" and not res["ok"]:
+        sys.exit(1)
+    if args.mode == "layout" and not all(r["ok"] for r in res["paused"]):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

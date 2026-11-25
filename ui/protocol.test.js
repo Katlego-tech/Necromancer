@@ -117,3 +117,15 @@ test("paused event: same accept/reject rules as the Python validator", () => {
   const { can_restart, ...noRestart } = base;
   assert.strictEqual(P.validateEvent(noRestart).ok, false);
 });
+test("mock paused scenario: every frame validates, paused comes after the evidence", () => {
+  for (const video of [null, "https://example.invalid/demo"]) {
+    const s = M.pausedScript(video);
+    s.forEach(step => assert.ok(P.validateEvent(step[1]).ok, JSON.stringify(step[1])));
+    const types = s.map(x => x[1].type);
+    assert.ok(types.indexOf("evidence") >= 0 && types.indexOf("evidence") < types.indexOf("paused"));
+    const p = s.find(x => x[1].type === "paused")[1];
+    assert.strictEqual(p.reason, "session_limit");
+    assert.strictEqual(p.can_restart, true);
+    assert.strictEqual(p.video_url, video);
+  }
+});

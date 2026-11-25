@@ -36,19 +36,26 @@
     [1500, { type: "state", state: "idle" }]
   ];
 
+  var PAUSED = SCRIPT.slice(0, 11).map(function (s) { return [Math.min(s[0], 150), s[1]]; });
+  function pausedScript(video) {
+    var ev = { type: "paused", reason: "session_limit", can_restart: true, video_url: video || null,
+      message: "This live voice session reached its time limit." };
+    return PAUSED.concat([[200, ev], [100, { type: "state", state: "idle" }]]);
+  }
   /* play(onFrame, opts) calls onFrame(rawJsonString) like a socket would. Returns {stop}. */
   function play(onFrame, opts) {
     var speed = (opts && opts.speed) || 1, i = 0, timer = null, stopped = false;
+    var script = opts && opts.scenario === "paused" ? pausedScript(opts.video) : SCRIPT;
     function next() {
-      if (stopped || i >= SCRIPT.length) return;
-      var step = SCRIPT[i++];
+      if (stopped || i >= script.length) return;
+      var step = script[i++];
       timer = setTimeout(function () { onFrame(JSON.stringify(step[1])); next(); }, step[0] / speed);
     }
     next();
     return { stop: function () { stopped = true; clearTimeout(timer); } };
   }
 
-  var api = { SCRIPT: SCRIPT, play: play };
+  var api = { SCRIPT: SCRIPT, pausedScript: pausedScript, play: play };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NecroMock = api;
 })(typeof window !== "undefined" ? window : this);

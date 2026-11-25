@@ -25,3 +25,8 @@ mark.quoted { background:var(--mark); color:#111; }
 body[data-state="alert"] #evidence-region { border-color:#ffb000; }
 @media (prefers-reduced-motion: no-preference) { section { transition:border-color .3s; } }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+#paused-banner { margin:1rem 1rem 0; border-color:var(--mark); background:#241f10; color:var(--fg); }
+#paused-banner p { margin:.25rem 0; } #paused-banner a { color:var(--accent); }
+#paused-banner form { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.5rem 0; }
+#paused-banner input { background:#0b0e13; color:var(--fg); border:1px solid var(--dim); border-radius:4px; padding:.3rem .5rem; font:inherit; }
+body[data-live="paused"] #mic, body[data-live="paused"] #text-form { display:none; }
