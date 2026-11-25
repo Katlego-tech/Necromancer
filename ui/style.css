@@ -30,3 +30,5 @@ body[data-state="alert"] #evidence-region { border-color:#ffb000; }
 #paused-banner form { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.5rem 0; }
 #paused-banner input { background:#0b0e13; color:var(--fg); border:1px solid var(--dim); border-radius:4px; padding:.3rem .5rem; font:inherit; }
 body[data-live="paused"] #mic, body[data-live="paused"] #text-form { display:none; }
+.evidence-grid { border-left:4px solid #ffb000; padding-left:.6rem; }
+.evidence-grid .ev-meta dd { color:#ffb000; }

@@ -34,7 +34,7 @@ CLOSE_TIMEOUT = 15.0
 class LiveController:
     def __init__(self, make_session, emitter, limits: Limits, caps: CapStore, usage_log: UsageLog, *,
                  factory=None, clock=time.monotonic, print_fn=print, tick: float = 1.0,
-                 video_url: str | None = None, autostart_on_connect: bool = True):
+                 video_url: str | None = None, autostart_on_connect: bool = True, registry=None):
         self.make_session = make_session
         self.emitter = emitter
         self.limits = limits
@@ -46,6 +46,8 @@ class LiveController:
         self.tick = tick
         self.video_url = video_url
         self.autostart_on_connect = autostart_on_connect
+        self.registry = registry                # only used to show an alert without a live session
+        self._alert_n = 0
         self.audio_sinks: list = []
         self.clear_sinks: list = []
         self.state = "off"                      # off | starting | live | ending
@@ -96,6 +98,29 @@ class LiveController:
             self._emit_status()
             return
         await self.session.summon(spirit_id)
+
+    async def alert(self, spirit_id: str, prompt: str, *, evidence: dict | None = None,
+                    expected: tuple | None = None, line: str | None = None) -> str:
+        """Live: the session speaks it ("started" or "busy"). Otherwise the alert is shown only
+        (spirit, appearance, evidence, scripted line): no session, no cap, no state event."""
+        if self.session is not None and self.state == "live":
+            return await self.session.alert(spirit_id, prompt, evidence=evidence, expected=expected, line=line)
+        if self.registry is None or spirit_id not in self.registry:
+            return "unknown_spirit"
+        spirit = self.registry.get(spirit_id)
+        self.emitter.spirit(spirit.id)
+        if spirit.appearance_path:
+            from pathlib import Path
+            from mascot.appearance import load_costume
+            from voice.session import REPO_ROOT
+            path = Path(spirit.appearance_path)
+            self.emitter.appearance(load_costume(str(path if path.is_absolute() else REPO_ROOT / path)))
+        if evidence:
+            self.emitter.evidence(**evidence)
+        if line:
+            self._alert_n += 1
+            self.emitter.transcript(f"alert{self._alert_n}", "spirit", line, True)
+        return "visual"
 
     def _emit_status(self) -> None:
         ev = self.status_event()

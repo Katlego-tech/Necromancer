@@ -17,7 +17,7 @@ from pathlib import Path
 
 from voice import events
 from voice.emitter import Emitter
-from voice.grounding_check import check_turn, is_cold
+from voice.grounding_check import check_alert, check_turn, is_cold
 from voice.summon import SUMMON_TOOL, DEFAULT_REGISTRY, Registry, Spirit, summon_tool_def
 from voice.usage import UsageMeter
 
@@ -59,7 +59,8 @@ class VoiceSession:
                  filler_after: float = 1.5, renew_after: float = 420.0,
                  close_cap: float = 10.0, history_cap: int = 200_000,
                  summon_grace: float = 5.0, turn_grace: float = 0.0,
-                 reader_grace: float = 2.0):
+                 reader_grace: float = 2.0, alert_wait: float = 8.0,
+                 alert_speak_timeout: float = 6.0):
         self.registry = registry or DEFAULT_REGISTRY
         self.factory = factory
         self.emitter = emitter
@@ -73,6 +74,8 @@ class VoiceSession:
         self.summon_grace = summon_grace
         self.turn_grace = turn_grace            # wait this long after an END_TURN text block
         self.reader_grace = reader_grace        # wait this long for the last usageEvent after sessionEnd
+        self.alert_wait = alert_wait            # wait this long for an open turn before barging in
+        self.alert_speak_timeout = alert_speak_timeout  # no model audio after this long: retry, then scripted line
         self.usage = UsageMeter()
         self.last_activity = clock()
         self.spirit = self.registry.get(spirit_id)
@@ -101,6 +104,8 @@ class VoiceSession:
         self._pending: tuple | None = None      # (spirit_id, since, grace)
         self._bg: set[asyncio.Task] = set()
         self._pump_task: asyncio.Task | None = None
+        self._alert: dict | None = None
+        self._alert_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------ public API
     async def start(self) -> None:
@@ -144,6 +149,84 @@ class VoiceSession:
         if self._handover_task:
             await self._handover_task
 
+    async def alert(self, spirit_id: str, prompt: str, *, evidence: dict | None = None,
+                    expected: tuple | None = None, line: str | None = None) -> str:
+        """Summon spirit_id, have it speak the engine-written alert, then hand back.
+        Returns "started", "busy" or "unknown_spirit". expected is (stage, area, spoken_start)."""
+        if spirit_id not in self.registry:
+            return "unknown_spirit"
+        if self._alert is not None or self._closing:
+            return "busy"
+        self._alert = {"spirit": spirit_id, "prompt": prompt, "evidence": evidence, "expected": expected,
+                       "line": line, "sent": False, "done": asyncio.Event()}
+        self._alert_task = asyncio.create_task(self._run_alert(self._alert))
+        return "started"
+
+    def _alert_must_wait(self) -> tuple[bool, bool]:
+        """(handover in progress, someone is talking)."""
+        conn = self._active
+        user_open = conn is not None and any(b.get("role") == "USER" for b in conn.blocks.values())
+        return (self._handover_active or self._pending is not None,
+                self._turn is not None or self.state == "speaking" or user_open)
+
+    async def _run_alert(self, a: dict) -> None:
+        loop = asyncio.get_running_loop()
+        prev = self.spirit
+        mine = False
+        try:
+            began = loop.time()
+            while True:
+                handing, talking = self._alert_must_wait()
+                if not handing and not talking:
+                    break
+                if not handing and loop.time() - began >= self.alert_wait:
+                    self._barged = False
+                    self._barge_in()
+                    break
+                await asyncio.sleep(self.frame_seconds)
+            target = self.registry.get(a["spirit"])
+            if target.id != prev.id:
+                self._emit_identity(target)
+            if a["evidence"]:
+                self.emitter.evidence(**a["evidence"])
+            if target.id != prev.id:
+                mine = self._handover_active = True
+                await self._handover(target.id, False, "in")
+                mine = self._handover_active = False
+                if self.spirit.id != target.id:
+                    self._emit_identity(prev)
+                    return
+            self._set_state("alert", force=True)
+            for attempt in range(2):
+                a["sent"] = True
+                a["done"].clear()
+                audio0 = self.audio_bytes
+                await self.inject_text(a["prompt"])
+                started = loop.time()
+                while not a["done"].is_set():
+                    if self.audio_bytes == audio0 and loop.time() - started >= self.alert_speak_timeout:
+                        break
+                    if loop.time() - started >= self.alert_speak_timeout * 10:
+                        break
+                    await asyncio.sleep(self.frame_seconds)
+                if a["done"].is_set() or self.audio_bytes > audio0:
+                    break
+            if not a["done"].is_set():
+                self._close_turn()
+                if self.audio_bytes == audio0 and a["line"]:
+                    self._turn_n += 1
+                    self.emitter.transcript(f"s{self._turn_n}", "spirit", a["line"], True)
+            a["sent"] = False
+            self._set_state("listening", force=True)
+            if self.spirit.id != prev.id:
+                mine = self._handover_active = True
+                await self._handover(prev.id, False, "out")
+                mine = self._handover_active = False
+        finally:
+            if mine:
+                self._handover_active = False
+            self._alert = None
+
     async def drain(self) -> None:
         """Wait for handover and background close tasks (tests, shutdown)."""
         while self._handover_task or self._bg:
@@ -152,6 +235,11 @@ class VoiceSession:
 
     async def close(self) -> None:
         self._closing = True
+        at = self._alert_task
+        if at is not None:
+            at.cancel()
+            await asyncio.gather(at, return_exceptions=True)
+            self._alert_task = None
         if self._turn is not None:
             self._close_turn()
         if self._pump_task:
@@ -284,7 +372,8 @@ class VoiceSession:
 
     def _check_renewal(self, conn: _Conn) -> None:
         if (self.clock() - conn.started >= self.renew_after and self._pending is None
-                and not self._handover_active and self._turn is None and self.state != "speaking"):
+                and not self._handover_active and self._turn is None and self.state != "speaking"
+                and self._alert is None):
             self._pending = (conn.spirit.id, self.clock(), 0.0)
             self._renewal = True
 
@@ -302,16 +391,16 @@ class VoiceSession:
         self._handover_active = True
         self._handover_task = asyncio.create_task(self._handover(spirit_id, renewal))
 
-    async def _handover(self, spirit_id: str, renewal: bool) -> None:
+    async def _handover(self, spirit_id: str, renewal: bool, alert: str = "") -> None:
         old = self._active
         try:
-            if not renewal:
+            if not renewal and alert != "out":
                 self._set_state("summoning", force=True)
             spirit = self.registry.get(spirit_id)
             new = await self._open_conn(spirit, self._history())
             self._active = new
             self.spirit = spirit
-            if not renewal:
+            if not renewal and alert != "in":
                 self._emit_identity(spirit)
         except Exception as e:
             self.emitter.error(f"handover failed: {type(e).__name__}: {e}")
@@ -320,7 +409,8 @@ class VoiceSession:
             self._handover_task = None
             return
         self._handover_active = False
-        self._set_state("listening", force=True)
+        if alert != "in":
+            self._set_state("listening", force=True)
         if old is not None:
             self._spawn_bg(self._close_conn(old))
         self._handover_task = None
@@ -465,7 +555,14 @@ class VoiceSession:
         turn, self._turn = self._turn, None
         if turn:
             finals = " ".join(turn["final"])
-            if finals:
+            alert = self._alert if self._alert and self._alert["sent"] else None
+            if finals and alert is not None:
+                if alert["expected"]:
+                    for p in check_alert(finals, *alert["expected"]):
+                        self.grounding_violations.append(p)
+                        self.emitter.error("grounding: " + p)
+                self._cold = False
+            elif finals:
                 for p in check_turn(finals, self.tool_results, after_cold=self._cold):
                     self.grounding_violations.append(p)
                     self.emitter.error("grounding: " + p)
@@ -474,6 +571,8 @@ class VoiceSession:
             self.emitter.transcript(turn["id"], "spirit", text, True)
             if finals:
                 self.transcript.append({"role": "spirit", "text": finals})
+            if alert is not None:
+                alert["done"].set()
         self._set_state("listening")
         self._maybe_start_pending(after_turn=bool(turn))
 

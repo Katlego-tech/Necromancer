@@ -65,6 +65,8 @@ Metadata keys required when `source` is not null (all shown in the order given, 
 | snapshot | `url`, `timestamp` (exactly 14 digits, e.g. `19990101000000`) |
 | grid | `stage`, `area`, `start` (exactly as the schedule returned them) |
 
+Extra scalar metadata keys are allowed (grid: `end`, `stage_updated`, `mode`, `label`); replay alerts carry `mode: "replay"`.
+
 ```json
 {"type":"evidence","kind":"email","source":"ev-0001","content":"Line one.\nLine two.","excerpt":"Line two.","metadata":{"evidence_id":"ev-0001","sender":"a@example.invalid","recipients":["b@example.invalid"],"date":"2001-01-01T00:00:00Z","subject":"Hi","source_path":"x/y/1."}}
 ```

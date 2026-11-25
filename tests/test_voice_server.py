@@ -124,9 +124,9 @@ class VoiceServerTest(unittest.IsolatedAsyncioTestCase):
 
     def test_registry_loads_both_spirits_and_wayback_needs_no_db(self):
         reg = load_registry("wayback", None)
-        self.assertEqual(reg.ids(), ["wayback"])
+        self.assertEqual(sorted(reg.ids()), ["grid", "wayback"])
         reg = load_registry("enron", "unused.sqlite")
-        self.assertEqual(sorted(reg.ids()), ["enron", "wayback"])
+        self.assertEqual(sorted(reg.ids()), ["enron", "grid", "wayback"])
         with self.assertRaises(ValueError):
             load_registry("enron", None)
 

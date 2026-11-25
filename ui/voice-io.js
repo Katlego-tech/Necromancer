@@ -1,5 +1,5 @@
 /* Browser audio and text I/O for the voice server (/io socket, see voice/server.py).
-   Up: mic PCM16 mono 16 kHz binary frames; text frames {"type":"text"|"summon"}.
+   Up: mic PCM16 mono 16 kHz binary frames; text frames {"type":"text"|"summon"|"alert"|"start"}.
    Down: PCM16 mono 24 kHz binary (played); text frame {"type":"clear"} empties the queue.
    Enabled only when the page URL has ?io=ws://... */
 (function () {
@@ -7,10 +7,12 @@
   var doc = document;
   var url = new URLSearchParams(location.search).get("io");
   var micBtn = doc.getElementById("mic");
+  var alertBtn = doc.getElementById("alert");
   var form = doc.getElementById("text-form");
   var input = doc.getElementById("text-input");
   if (!url) {
     if (micBtn) micBtn.disabled = true;
+    if (alertBtn) alertBtn.hidden = true;
     if (form) form.hidden = true;
     return;
   }
@@ -113,6 +115,9 @@
         micBtn.textContent = "Microphone unavailable: " + (e && e.name ? e.name : "error");
       });
     });
+  }
+  if (alertBtn) {
+    alertBtn.addEventListener("click", function () { ensurePlayCtx(); send(JSON.stringify({ type: "alert" })); });
   }
   if (form) {
     form.addEventListener("submit", function (ev) {

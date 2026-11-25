@@ -10,9 +10,9 @@ Built for **Kiroween 2026**, Frankenstein category, with Kiro (specs, steering f
 |---|---|---|
 | Enron Ghost | CMU Enron email dataset, indexed in SQLite FTS5 | Search tools and ingestion pipeline built and tested |
 | Wayback Medium | Wayback Machine CDX and raw `id_` snapshot APIs | Tools, persona, costume and one cached snapshot built; summoned by voice in one live typed-text run (see Voice (Wayback Medium)) |
-| Grid Ghost | EskomSePush schedule data, plus a replay mode | Replay tools built against a **synthetic** fixture; live API not implemented |
+| Grid Ghost | EskomSePush schedule data, plus a replay mode | Replay tools and a spoken replay alert built against a **synthetic** fixture; live API not implemented |
 
-The shared voice engine (Amazon Nova Sonic on Amazon Bedrock, `voice/`) and the Enron Ghost by voice are built. A live run with typed questions and the real Enron index passed (see Voice below). Microphone input, speaker playback and mascot rendering in a browser have not been tested by a person yet. The Wayback Medium is wired into the voice engine (one live typed run, see below); Grid Ghost is not. See `.kiro/specs/necromancer.md` for the task list.
+The shared voice engine (Amazon Nova Sonic on Amazon Bedrock, `voice/`) and the Enron Ghost by voice are built. A live run with typed questions and the real Enron index passed (see Voice below). Microphone input, speaker playback and mascot rendering in a browser have not been tested by a person yet. The Wayback Medium is wired into the voice engine (one live typed run, see below); the Grid Ghost replay alert is wired in the engine and tested against a fake stream (see Grid Ghost replay). See `.kiro/specs/necromancer.md` for the task list.
 
 ## Grounding rule
 
@@ -55,6 +55,18 @@ Limits:
 - Snapshot text is capped at 2 MB of HTML before conversion to text.
 - The Wayback Medium speaks with the Nova Sonic voice `tiffany`; the Enron Ghost uses `matthew`.
 - Live run result (typed input): the summon handed over to the Wayback Medium and the spirit read the cached page with the correct URL, timestamp and a quote that matches the snapshot. It also spoke an unrequested greeting after the summon, and the engine flagged that turn as a grounding violation (false positive: the summon tool result looks like a cold result to the checker). Microphone and speaker use were not tested.
+## Grid Ghost replay
+
+The Grid Ghost speaks first, once, when an alert is triggered. The alert text is built in code from the replay fixture (`spirits/grid/spirit.py`, `build_alert`), so the stage, area and start time come from the schedule record, and the spirit adds the sentence "This is a replay of synthetic demo data." The engine summons the Grid Ghost (own stream, voice and amber costume), injects the alert as an engine-written text turn, then hands back to the previous spirit. A spoken alert that differs from the record in stage, area or time is recorded as a grounding violation.
+
+Trigger it with the "Replay grid alert" button, or from a script:
+
+```
+curl -X POST -H "Authorization: Bearer $NECRO_ACCESS_CODE" -d '{"area":"Sandton (Demo Area 1)"}' http://127.0.0.1:8765/alert
+```
+
+`POST /alert` applies the Origin check and the access code (`Authorization: Bearer` or `X-Necro-Code`) when one is set, and accepts at most 1 KB. Responses: 202 started or visual, 404 no matching outage, 409 an alert is already running. Without a live voice session the alert is shown only (spirit, costume, evidence, a scripted line). It starts no session and uses no cap. `scripts/live_grid_alert.py` is a live check (needs `NECRO_LIVE=1` and AWS credentials; not run).
+
 ## Privacy note on the Enron data
 
 The dataset was made public during a federal investigation and contains real people's email. Many of the people in it were not involved in any wrongdoing. The CMU distributor asks users to be sensitive to their privacy. This project quotes emails only as historical evidence, and the Enron Ghost should focus on the executives and events in the public record.

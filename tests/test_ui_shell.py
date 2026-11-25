@@ -24,12 +24,13 @@ class UiShellTests(unittest.TestCase):
         html = (UI / "index.html").read_text(encoding="utf8")
         self.assertIsNone(re.search(r"\son\w+=", html))
         self.assertIn('aria-live="polite"', html)
-        for ref in ("../mascot/mascot.css", "../mascot/mascot.js", "voice-io.js", 'id="mic"', 'id="text-input"',
+        for ref in ("../mascot/mascot.css", "../mascot/mascot.js", "voice-io.js", 'id="mic"', 'id="alert"', 'id="text-input"',
                     'id="paused-banner"', 'id="paused-msg"', 'id="code-form"', 'id="code-input"', 'type="password"',
                     'id="restart"', 'id="video-slot"', 'id="video-link"', "auth.js", "banner.js"):
             self.assertIn(ref, html)
         self.assertLess(html.index("auth.js"), html.index("client.js"))
         self.assertNotIn("localStorage", (UI / "auth.js").read_text(encoding="utf8"))
+        self.assertIn('type: "alert"', (UI / "voice-io.js").read_text(encoding="utf8"))
         self.assertIn("prefers-reduced-motion", (UI / "style.css").read_text(encoding="utf8"))
 
     def test_events_md_has_examples(self):

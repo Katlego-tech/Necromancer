@@ -30,7 +30,11 @@ GATE = web.AppKey("gate", AccessGate)
 PUBLIC = web.AppKey("public", bool)
 EMITTER = web.AppKey("emitter", Emitter)
 MAX_MSG = 1 << 20
-SPIRIT_MODULES = {"enron": "spirits.enron.spirit", "wayback": "spirits.wayback.spirit"}
+ALERT_BUILDER = web.AppKey("alert_builder", object)
+REGISTRY = web.AppKey("registry", Registry)
+MAX_ALERT_BODY = 1024
+SPIRIT_MODULES = {"enron": "spirits.enron.spirit", "wayback": "spirits.wayback.spirit",
+                  "grid": "spirits.grid.spirit"}
 def load_registry(start: str, db: str | None) -> Registry:
     """Register every loadable spirit (enron only with a db); the engine imports none statically."""
     registry = Registry()
@@ -163,6 +167,8 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
                         spawn(session.send_text(data["text"]))
                     elif kind == "start":
                         spawn(session.ensure_started())
+                    elif kind == "alert" and isinstance(data.get("area", ""), str) and len(data.get("area", "")) <= 100:
+                        spawn(_trigger_alert(request.app, data.get("area") or None))
                     elif kind == "summon" and isinstance(data.get("spirit"), str):
                         spawn(session.summon(data["spirit"]))
                     else:
@@ -182,6 +188,59 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
     return ws
 
 
+async def _trigger_alert(app: web.Application, area: str | None) -> tuple[int, dict]:
+    """Build the alert from the schedule and hand it to the controller. Returns (http status, body)."""
+    ctl: LiveController = app[SESSION]
+    if "grid" not in app[REGISTRY]:
+        return 503, {"status": "unavailable"}
+    builder = app[ALERT_BUILDER]
+    if builder is None:
+        builder = importlib.import_module(SPIRIT_MODULES["grid"]).build_alert
+    alert = await asyncio.to_thread(builder, area)
+    if alert is None:
+        emitter: Emitter = app[EMITTER]
+        emitter.evidence(kind="grid", source=None, content=None)
+        emitter.transcript("alert-cold", "spirit", "The trail goes cold.", True)
+        return 404, {"status": "cold"}
+    status = await ctl.alert("grid", alert["prompt"], evidence=alert["evidence"],
+                             expected=(alert["stage"], alert["area"], alert["spoken_start"]),
+                             line=alert["line"])
+    code = 202 if status in ("started", "visual") else 409 if status == "busy" else 503
+    return code, {"status": status}
+
+
+async def alert_http(request: web.Request) -> web.StreamResponse:
+    if not _origin_ok(request):
+        return web.json_response({"status": "origin not allowed"}, status=403)
+    gate: AccessGate = request.app[GATE]
+    if gate.required:
+        code = request.headers.get("X-Necro-Code")
+        auth = request.headers.get("Authorization", "")
+        if code is None and auth.startswith("Bearer "):
+            code = auth[7:].strip()
+        verdict = await gate.attempt(request.remote or "?", code)
+        if verdict == "locked":
+            return web.json_response({"status": "locked"}, status=429)
+        if verdict != "ok":
+            return web.json_response({"status": "bad code"}, status=401)
+    if request.content_length is not None and request.content_length > MAX_ALERT_BODY:
+        return web.json_response({"status": "body too large"}, status=413)
+    raw = await request.content.read(MAX_ALERT_BODY + 1)
+    if len(raw) > MAX_ALERT_BODY:
+        return web.json_response({"status": "body too large"}, status=413)
+    area = None
+    if raw.strip():
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return web.json_response({"status": "bad json"}, status=400)
+        area = data.get("area") if isinstance(data, dict) else False
+        if area is not None and (not isinstance(area, str) or len(area) > 100):
+            return web.json_response({"status": "bad area"}, status=400)
+    status, body = await _trigger_alert(request.app, area or None)
+    return web.json_response(body, status=status)
+
+
 async def index(request: web.Request) -> web.StreamResponse:
     raise web.HTTPFound("/ui/index.html")
 
@@ -189,7 +248,7 @@ async def index(request: web.Request) -> web.StreamResponse:
 def build_app(registry: Registry, spirit_id: str, factory, *, record_path: str | None = None,
               gate: AccessGate | None = None, limits: Limits | None = None, caps: CapStore | None = None,
               usage_log: UsageLog | None = None, video_url: str | None = None, public: bool = False,
-              **session_kwargs) -> web.Application:
+              alert_builder=None, **session_kwargs) -> web.Application:
     emitter = Emitter(record_path)
     limits = limits or Limits()
     if caps is None:
@@ -199,15 +258,18 @@ def build_app(registry: Registry, spirit_id: str, factory, *, record_path: str |
     session = LiveController(
         lambda: VoiceSession(registry, spirit_id, factory, emitter, **session_kwargs),
         emitter, limits, caps, usage_log, factory=factory, video_url=video_url,
-        autostart_on_connect=not public)
+        autostart_on_connect=not public, registry=registry)
     app = web.Application()
     app[SESSION] = session
     app[GATE] = gate or AccessGate(None)
     app[PUBLIC] = public
     app[EMITTER] = emitter
+    app[REGISTRY] = registry
+    app[ALERT_BUILDER] = alert_builder
     app.router.add_get("/", index)
     app.router.add_get("/events", events_ws)
     app.router.add_get("/io", io_ws)
+    app.router.add_post("/alert", alert_http)
     app.router.add_static("/ui", ROOT / "ui")
     app.router.add_static("/mascot/assets", ROOT / "mascot" / "assets")
     for name in ("mascot.js", "mascot.css"):
