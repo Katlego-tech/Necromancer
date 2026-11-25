@@ -195,3 +195,35 @@ class LiveSmoke(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaybackTruncationAndSummaryTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+    def tearDown(self):
+        self.tmp.cleanup()
+    def test_oversize_page_is_flagged_truncated_and_text_kept(self):
+        body = b"<p>Synthetic start.</p>" + b"x" * tools.MAX_BYTES  # SYNTHETIC, over the limit
+        r = tools.read_snapshot(URL, "19990301000000", cache_dir=self.tmp.name,
+                                fetch=Fake(snap("19990301000000", body=body)), sleep=lambda s: None)
+        self.assertTrue(r["evidence"][0]["truncated"])
+        self.assertTrue(r["content"].startswith("Synthetic start."))
+        self.assertIn("cut short", r["summary"])
+        again = tools.read_snapshot(URL, "19990301000000", cache_dir=self.tmp.name,
+                                    fetch=Fake(OSError("offline")), sleep=lambda s: None)
+        self.assertTrue(again["evidence"][0]["truncated"])
+    def test_page_at_the_limit_is_not_flagged(self):
+        body = b"<p>Synthetic.</p>" + b" " * (tools.MAX_BYTES - 17)
+        self.assertEqual(len(body), tools.MAX_BYTES)
+        r = tools.read_snapshot(URL, "19990301000000", cache_dir=self.tmp.name,
+                                fetch=Fake(snap("19990301000000", body=body)), sleep=lambda s: None)
+        self.assertNotIn("truncated", r["evidence"][0])
+    def test_list_summary_uses_served_rows_not_caller_input(self):
+        served = "http://served.example.test/"
+        cdx = [CDX[0], ["20010201000000", served, "text/html", "200"]]
+        f = Fake((200, "http://web.archive.org/cdx", json.dumps(cdx).encode()))
+        r = tools.list_snapshots(URL, 1999, cache_dir=self.tmp.name, fetch=f, sleep=lambda s: None)
+        self.assertIn(served, r["summary"])
+        self.assertIn("in 2001", r["summary"])
+        self.assertNotIn(URL, r["summary"])
+        self.assertNotIn("1999", r["summary"])

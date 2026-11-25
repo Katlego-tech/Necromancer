@@ -71,7 +71,7 @@ def _default_fetch(url: str) -> Tuple[int, str, bytes]:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return resp.status, resp.geturl(), resp.read(MAX_BYTES)
+            return resp.status, resp.geturl(), resp.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as e:
         return e.code, e.geturl() or url, b""
 
@@ -161,7 +161,13 @@ def html_to_text(html: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
-def _decode(body: bytes) -> str:
+def _decode(body: bytes, truncated: bool = False) -> str:
+    if truncated:  # the cut may split a multi-byte character; drop the partial tail
+        for drop in range(4):
+            try:
+                return (body[:len(body) - drop] if drop else body).decode("utf-8")
+            except UnicodeDecodeError:
+                continue
     try:
         return body.decode("utf-8")
     except UnicodeDecodeError:
@@ -220,7 +226,8 @@ def _list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,
     return {
         "source": evidence[0]["archive_url"],
         "content": content,
-        "summary": (f"Found {len(rows)} archived snapshot(s) of {url} in {year}; "
+        "summary": (f"Found {len(rows)} archived snapshot(s) of {rows[0]['original']} "
+                    f"in {first[:4]}; "
                     f"first captured {first}, last captured {last}."),
         "evidence": evidence,
     }
@@ -244,23 +251,26 @@ def _read_snapshot(url: str, timestamp: str, *, cache_dir: str = DEFAULT_CACHE_D
         if not m:  # cannot tell which capture was served, so cannot cite it
             return _cold()
         served_ts, served_url = m.group(1), m.group(2)
-        text = html_to_text(_decode(got[2]))
+        truncated = len(got[2]) > MAX_BYTES
+        text = html_to_text(_decode(got[2][:MAX_BYTES], truncated))
         if not text:
             return _cold()
         rec = {"url": served_url, "timestamp": served_ts, "requested_url": url,
                "requested_timestamp": timestamp, "text": text}
+        if truncated:
+            rec["truncated"] = True
         _cache_write(req_path, rec)
         _cache_write(_cache_path(cache_dir, "snap", served_url, served_ts), rec)
     served_ts, served_url = rec["timestamp"], rec["url"]
     link = _archive_link(served_url, served_ts)
-    return {
-        "source": link,
-        "content": rec["text"],
-        "summary": f"Archived snapshot of {served_url} captured at {served_ts}.",
-        "evidence": [{"url": served_url, "timestamp": served_ts,
-                      "requested_timestamp": rec.get("requested_timestamp", timestamp),
-                      "archive_url": link, "cached": bool(cached)}],
-    }
+    summary = f"Archived snapshot of {served_url} captured at {served_ts}."
+    meta = {"url": served_url, "timestamp": served_ts,
+            "requested_timestamp": rec.get("requested_timestamp", timestamp),
+            "archive_url": link, "cached": bool(cached)}
+    if rec.get("truncated"):
+        meta["truncated"] = True
+        summary += " The archived page was larger than the size limit, so this text is cut short."
+    return {"source": link, "content": rec["text"], "summary": summary, "evidence": [meta]}
 
 
 def list_snapshots(url: str, year, *, cache_dir: str = DEFAULT_CACHE_DIR,

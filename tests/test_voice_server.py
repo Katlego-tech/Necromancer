@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from tests import fake_bedrock as fb
 from tests.fake_bedrock import FakeFactory, make_spirit
 from voice.protocol_check import validate_event
-from voice.server import build_app
+from voice.server import build_app, load_registry
 from voice.summon import Registry
 
 
@@ -121,6 +121,14 @@ class VoiceServerTest(unittest.IsolatedAsyncioTestCase):
         await io_ws.send_str("not json")
         got = await read_events(ev_ws, lambda e: e["type"] == "error")
         self.assertIn("malformed", got[-1]["message"])
+
+    def test_registry_loads_both_spirits_and_wayback_needs_no_db(self):
+        reg = load_registry("wayback", None)
+        self.assertEqual(reg.ids(), ["wayback"])
+        reg = load_registry("enron", "unused.sqlite")
+        self.assertEqual(sorted(reg.ids()), ["enron", "wayback"])
+        with self.assertRaises(ValueError):
+            load_registry("enron", None)
 
 
 if __name__ == "__main__":

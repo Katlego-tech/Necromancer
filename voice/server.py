@@ -30,6 +30,18 @@ GATE = web.AppKey("gate", AccessGate)
 PUBLIC = web.AppKey("public", bool)
 EMITTER = web.AppKey("emitter", Emitter)
 MAX_MSG = 1 << 20
+SPIRIT_MODULES = {"enron": "spirits.enron.spirit", "wayback": "spirits.wayback.spirit"}
+def load_registry(start: str, db: str | None) -> Registry:
+    """Register every loadable spirit (enron only with a db); the engine imports none statically."""
+    registry = Registry()
+    for sid, mod in SPIRIT_MODULES.items():
+        if sid == "enron" and not db:
+            continue
+        module = importlib.import_module(mod)
+        registry.register(module.make_spirit(db) if sid == "enron" else module.make_spirit())
+    if start not in registry:
+        raise ValueError(f"spirit {start} is not loadable (enron needs --db)")
+    return registry
 
 
 def _origin_ok(request: web.Request) -> bool:
@@ -217,8 +229,8 @@ def _file_handler(path: Path):
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Necromancer voice server (127.0.0.1 only)")
-    ap.add_argument("--spirit", default="enron", choices=["enron"])
-    ap.add_argument("--db", required=True, help="path to the Enron SQLite index")
+    ap.add_argument("--spirit", default="enron", choices=sorted(SPIRIT_MODULES))
+    ap.add_argument("--db", help="path to the Enron SQLite index (required for the enron spirit)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--record", help="write emitted UI events to this JSONL file")
     ap.add_argument("--public", action="store_true",
@@ -255,9 +267,10 @@ def main(argv=None) -> None:
     from voice.stream import BedrockFactory
 
     # Spirits are loaded by name from their data module; the engine imports none statically.
-    module = importlib.import_module(f"spirits.{args.spirit}.spirit")
-    registry = Registry()
-    registry.register(module.make_spirit(args.db))
+    try:
+        registry = load_registry(args.spirit, args.db)
+    except ValueError as e:
+        ap.error(str(e))
     app = build_app(registry, args.spirit, BedrockFactory(), record_path=args.record,
                     gate=gate, limits=limits, caps=CapStore(args.caps_file, limits),
                     usage_log=UsageLog(args.usage_log), video_url=args.demo_video_url,
