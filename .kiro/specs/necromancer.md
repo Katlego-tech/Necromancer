@@ -197,6 +197,12 @@ backend over a WebSocket; it does not contain business logic.
 - [ ] **T6.3** Polish README: description, setup, Kiro story, disclosure, demo video link.
 - [ ] **T6.4** Verify `.kiro/` is committed and all secrets are excluded from Git history.
 - [ ] **T6.5** Submit on Devpost before 4 December 2026, 2:00 PM PT.
+- [x] **T6.6** Add an open-source licence file (Devpost rule: detectable and shown in the repo's About section). (MIT, `LICENSE`, copyright holder is the GitHub account name `Katlego-tech`; change it if you want your legal name. Check on GitHub that the About box shows "MIT License".)
+- [ ] **T6.7** Draft the "how Kiro was used" write-up (required; insufficient Kiro use can disqualify). Cover specs, steering, the grounding hook, and the multi-agent workflows with their reviews. Consider adding one or two more hooks first.
+- [ ] **T6.8** (Yours) Best Student Project: the form asks for LinkedIn profiles, student emails, year and degree, school, and proof of enrolment may be requested. Have these ready.
+- [ ] **T6.9** Video checks (rules: under 3 minutes, public on YouTube, no third-party trademarks or copyrighted music). Decide whether showing the archived pets.com page is acceptable; use no music or only music you own.
+- [ ] **T6.10** Put the app URL and the JUDGE access code and instructions in the Devpost form (rules: free and unrestricted access until judging ends on 29 Jan 2027 at 1:00 pm PT; failure to provide access may disqualify). Depends on T7.8 and T7.10.
+- [ ] **T6.11** (Optional bonus prizes) A public blog post and a social post tagged #KiroweenHackathon26, both published before the deadline.
 
 ---
 
@@ -211,6 +217,7 @@ Context: the Nova Sonic price could not be confirmed from the official page (it 
 - [ ] **T7.7** Plan B page: the "live voice paused" state with the demo video link and a working evidence panel. The UI part is done (paused banner, video link from `--demo-video-url`, restart and code form); the demo video itself and its URL are still open.
 - [ ] **T7.8** Choose and document hosting. The backend is a long-running WebSocket server and needs the 973 MB index on local disk, so it does not fit Vercel functions (the static `ui/` could). Prefer one AWS host with an IAM role instead of the `aws login` credentials export. Also check the Devpost rules: is a hosted app URL required, or are the video and the repo enough?
 - [ ] **T7.9** Price and size the host before choosing it. (a) Measure the server's peak memory with the real 973 MB index and a few simulated sessions, so we know whether a 2 GB instance (t3.small) is enough. (b) Compare t3.small against a Graviton instance (e.g. t4g.small) and a flat-price Lightsail plan, using prices read from the AWS Pricing API or console on the day, and check that `awscrt` and the other pinned packages install on ARM before choosing Graviton. (c) Record the chosen host, its cost until 29 Jan 2027 and the date checked. Reference estimate from 24 Nov 2026: t3.small about $33 + disk about $3.50 + IPv4 about $8 = about $44 (t3.medium about $77), plus Bedrock usage. A serverless redesign was considered and rejected: a voice session needs one long-lived process holding the Bedrock stream, so Lambda plus API Gateway WebSockets would need a message relay and a rewrite of `voice/server.py`, and it saves at most the fixed host cost.
+- [ ] **T7.10** Judge access. Devpost requires free, unrestricted access until 29 Jan 2027, so judges must never hit the public caps. Add a second code, `NECRO_JUDGE_CODE` (never equal to the public code), whose sessions are not blocked by the public daily and total caps and have their own larger allowance, but are still bound by the per-session length and idle limits. Log judge sessions separately, compare in constant time, never log or emit the code, rate-limit wrong attempts, and put the code only in the Devpost form. Size the allowance from T7.5 (a measured session and the console price). Test that public caps pausing live voice does not block a judge session.
 
 ## 4. Cut lines
 

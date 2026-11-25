@@ -105,6 +105,6 @@ Copy `.env.example` to `.env` and fill in values. `.env` is gitignored. Never co
 
 ## License
 
-TO DECIDE: add a LICENSE file (the hackathon requires an open-source repository).
+MIT. See [LICENSE](LICENSE).
 
 Note on the wrong-code lockout: it is keyed on the remote address (5 failures per minute) plus a global limit (50 per minute). Behind a reverse proxy every client shares one remote address, so the global limit is the real guard, and an attacker can lock out legitimate visitors for up to a minute at a time.
