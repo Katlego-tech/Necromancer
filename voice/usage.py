@@ -67,10 +67,12 @@ class UsageLog:
         self.path = str(path)
 
     def append(self, *, seconds: float, streams: int, end_reason: str, usage: dict,
-               now: datetime.datetime | None = None) -> dict:
+               role: str = "public", now: datetime.datetime | None = None) -> dict:
+        if role not in ("public", "judge"):
+            raise ValueError("role must be public or judge")
         ts = (now or datetime.datetime.now(datetime.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
         record = {"ts": ts, "session_id": uuid.uuid4().hex, "seconds": round(float(seconds), 1),
-                  "streams": int(streams), "end_reason": str(end_reason), "usage": usage}
+                  "streams": int(streams), "end_reason": str(end_reason), "role": role, "usage": usage}
         parent = os.path.dirname(os.path.abspath(self.path))
         os.makedirs(parent, exist_ok=True)
         with open(self.path, "a", encoding="utf-8") as f:
@@ -80,8 +82,9 @@ class UsageLog:
 
 def format_summary(record: dict) -> str:
     u = record["usage"]
+    role = " role=judge" if record.get("role") == "judge" else ""
     return ("usage: session=%s reason=%s seconds=%s streams=%s in_speech=%s in_text=%s "
             "out_speech=%s out_text=%s" % (
                 record["session_id"][:8], record["end_reason"], record["seconds"], record["streams"],
                 u["input"]["speechTokens"], u["input"]["textTokens"],
-                u["output"]["speechTokens"], u["output"]["textTokens"]))
+                u["output"]["speechTokens"], u["output"]["textTokens"])) + role

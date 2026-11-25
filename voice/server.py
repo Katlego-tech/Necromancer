@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from aiohttp import WSMsgType, web
 
 from voice.emitter import Emitter
-from voice.guard import AccessGate, CapStore, Limits
+from voice.guard import AccessGate, CapStore, Limits, parse_expiry
 from voice.live import LiveController
 from voice.session import VoiceSession
 from voice.summon import Registry
@@ -55,15 +55,26 @@ def _origin_ok(request: web.Request) -> bool:
     return urlsplit(origin).netloc == request.headers.get("Host", "")
 
 
-async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> bool:
+def _visible(ev: dict, role: str) -> dict | None:
+    """Drop events aimed at the other role; strip the internal routing key from the rest."""
+    audience = ev.get("_audience")
+    if audience is None:
+        return ev
+    if audience != role:
+        return None
+    return {k: v for k, v in ev.items() if k != "_audience"}
+
+
+async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> str | None:
+    """Returns the role ('public' or 'judge') the code grants, or None after refusing the connection."""
     gate: AccessGate = request.app[GATE]
     if not gate.required:
-        return True
+        return "public"
     ctl: LiveController = request.app[SESSION]
     try:
         await ws.send_str(json.dumps(ctl.paused_event("code_required")))
     except ConnectionResetError:
-        return False
+        return None
     code = None
     try:
         msg = await ws.receive(timeout=5)
@@ -73,9 +84,9 @@ async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> bool
                 code = data.get("code")
     except (asyncio.TimeoutError, ValueError):
         pass
-    verdict = await gate.attempt(request.remote or "?", code)
+    verdict, role = await gate.attempt_role(request.remote or "?", code)
     if verdict == "ok":
-        return True
+        return role
     ev = ctl.paused_event("bad_code")
     if verdict == "locked":
         ev["message"] = "Too many attempts, try later."
@@ -84,7 +95,7 @@ async def _authenticate(request: web.Request, ws: web.WebSocketResponse) -> bool
         await ws.close(code=4429 if verdict == "locked" else 4401)
     except ConnectionResetError:
         pass
-    return False
+    return None
 
 
 async def events_ws(request: web.Request) -> web.StreamResponse:
@@ -92,16 +103,20 @@ async def events_ws(request: web.Request) -> web.StreamResponse:
         return web.Response(status=403, text="origin not allowed")
     ws = web.WebSocketResponse(max_msg_size=MAX_MSG)
     await ws.prepare(request)
-    if not await _authenticate(request, ws):
+    role = await _authenticate(request, ws)
+    if role is None:
         return ws
     emitter: Emitter = request.app[EMITTER]
     queue: asyncio.Queue = asyncio.Queue()
-    for ev in emitter.events:  # late joiners see the history so far
-        queue.put_nowait(ev)
-    status = request.app[SESSION].status_event()
+    def sink(ev):
+        ev = _visible(ev, role)
+        if ev is not None:
+            queue.put_nowait(ev)
+    for ev in list(emitter.events):  # late joiners see the history so far
+        sink(ev)
+    status = request.app[SESSION].status_event(role)
     if status is not None:
         queue.put_nowait(status)
-    sink = queue.put_nowait
     emitter.add_sink(sink)
 
     async def writer():
@@ -126,7 +141,8 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
         return web.Response(status=403, text="origin not allowed")
     ws = web.WebSocketResponse(max_msg_size=MAX_MSG)
     await ws.prepare(request)
-    if not await _authenticate(request, ws):
+    role = await _authenticate(request, ws)
+    if role is None:
         return ws
     session: LiveController = request.app[SESSION]
     session.client_joined()
@@ -155,7 +171,7 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
 
     try:
         if not request.app[PUBLIC]:
-            await session.ensure_started()
+            await session.ensure_started(role)
         async for msg in ws:
             if msg.type == WSMsgType.BINARY:
                 session.feed_audio(msg.data)
@@ -164,13 +180,13 @@ async def io_ws(request: web.Request) -> web.StreamResponse:
                     data = json.loads(msg.data)
                     kind = data.get("type")
                     if kind == "text" and isinstance(data.get("text"), str) and data["text"].strip():
-                        spawn(session.send_text(data["text"]))
+                        spawn(session.send_text(data["text"], role))
                     elif kind == "start":
-                        spawn(session.ensure_started())
+                        spawn(session.ensure_started(role))
                     elif kind == "alert" and isinstance(data.get("area", ""), str) and len(data.get("area", "")) <= 100:
                         spawn(_trigger_alert(request.app, data.get("area") or None))
                     elif kind == "summon" and isinstance(data.get("spirit"), str):
-                        spawn(session.summon(data["spirit"]))
+                        spawn(session.summon(data["spirit"], role))
                     else:
                         emitter.error("ignored malformed /io message")
                 except (ValueError, AttributeError):
@@ -258,7 +274,8 @@ def build_app(registry: Registry, spirit_id: str, factory, *, record_path: str |
     session = LiveController(
         lambda: VoiceSession(registry, spirit_id, factory, emitter, **session_kwargs),
         emitter, limits, caps, usage_log, factory=factory, video_url=video_url,
-        autostart_on_connect=not public, registry=registry)
+        autostart_on_connect=not public, registry=registry,
+        role_allowed=(gate.allowed if gate else None))
     app = web.Application()
     app[SESSION] = session
     app[GATE] = gate or AccessGate(None)
@@ -301,6 +318,12 @@ def main(argv=None) -> None:
             ("idle_seconds", "NECRO_IDLE_SECONDS", float, 60),
             ("daily_cap", "NECRO_DAILY_CAP", int, 20),
             ("total_cap", "NECRO_TOTAL_CAP", int, 200),
+            ("judge_max_session_seconds", "NECRO_JUDGE_MAX_SESSION_SECONDS", float, 300),
+            ("judge_idle_seconds", "NECRO_JUDGE_IDLE_SECONDS", float, 90),
+            ("judge_daily_cap", "NECRO_JUDGE_DAILY_CAP", int, 30),
+            ("judge_total_cap", "NECRO_JUDGE_TOTAL_CAP", int, 150),
+            ("judge_expires", "NECRO_JUDGE_EXPIRES", str, None),
+            ("control_dir", "NECRO_CONTROL_DIR", str, "var/control"),
             ("usage_log", "NECRO_USAGE_LOG", str, "var/usage.jsonl"),
             ("caps_file", "NECRO_CAPS_FILE", str, "var/caps.json"),
             ("demo_video_url", "NECRO_DEMO_VIDEO_URL", str, None))
@@ -321,10 +344,23 @@ def main(argv=None) -> None:
         sys.exit(2)
     try:
         limits = Limits(max_session_seconds=args.max_session_seconds, idle_seconds=args.idle_seconds,
-                        daily_cap=args.daily_cap, total_cap=args.total_cap)
+                        daily_cap=args.daily_cap, total_cap=args.total_cap,
+                        judge_max_session_seconds=args.judge_max_session_seconds,
+                        judge_idle_seconds=args.judge_idle_seconds,
+                        judge_daily_cap=args.judge_daily_cap, judge_total_cap=args.judge_total_cap)
     except ValueError as e:
         ap.error(str(e))
-    gate = AccessGate(code if code.strip() else None)
+    judge_code = os.environ.get("NECRO_JUDGE_CODE", "")
+    truthy = lambda name: os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")  # noqa: E731
+    try:
+        gate = AccessGate(code if code.strip() else None,
+                          judge_code=judge_code if judge_code.strip() else None,
+                          judge_expires=parse_expiry(args.judge_expires), control_dir=args.control_dir,
+                          disabled=[r for r, env in (("judge", "NECRO_DISABLE_JUDGE"),
+                                                     ("public", "NECRO_DISABLE_PUBLIC")) if truthy(env)])
+    except ValueError as e:  # never echoes a code
+        print(str(e) + "; refusing to start", file=sys.stderr)
+        sys.exit(2)
 
     from voice.stream import BedrockFactory
 

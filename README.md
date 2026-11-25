@@ -99,7 +99,39 @@ The voice server needs `aiohttp` (pinned in `requirements.txt`), AWS credentials
 ```
 Open the URL it prints (`/ui/index.html?ws=ws://127.0.0.1:8765/events&io=ws://127.0.0.1:8765/io`). The server binds 127.0.0.1 only, serves only `ui/` and the mascot assets, and refuses WebSocket connections from another origin. The page has a microphone button and a text box. No Bedrock stream is open at server start. In local mode the stream opens when the first browser connects to `/io`; with `--public` it opens only after the page sends a `start` message. Each live session counts against a daily and a total cap, ends at the session limit, after idle time, or when the last browser disconnects, and appends one line (token counts only, no text) to the usage log.
 Guardrail settings (flag, or environment variable when the flag is absent): `--max-session-seconds` / `NECRO_MAX_SESSION_SECONDS` (default 180, at most 480), `--idle-seconds` / `NECRO_IDLE_SECONDS` (60), `--daily-cap` / `NECRO_DAILY_CAP` (20), `--total-cap` / `NECRO_TOTAL_CAP` (200), `--usage-log` / `NECRO_USAGE_LOG` (`var/usage.jsonl`), `--caps-file` / `NECRO_CAPS_FILE` (`var/caps.json`), `--demo-video-url` / `NECRO_DEMO_VIDEO_URL`. Set `NECRO_ACCESS_CODE` in the environment to require an access code on `/events` and `/io` (sent as the first WebSocket frame, never in the URL). `--public` refuses to start without that variable. A start that the client cancels (it disconnects) after a cap slot was taken keeps the slot, because a Bedrock stream may already have been opened and billed, and appends a usage line with `end_reason` `start_cancelled` and zero counts so the slot is accounted for. A code that is not valid text (for example a lone surrogate) counts as a failed attempt.
+A code that is not valid text (for example a lone surrogate) counts as a failed attempt.
 Access code design: when `NECRO_ACCESS_CODE` is set, each WebSocket first receives a `paused` event with reason `code_required`, and the browser must answer within 5 seconds with `{"type":"auth","code":"..."}` as its first frame. A wrong code gets reason `bad_code` and close code 4401; repeated failures get 4429. The server keeps only a SHA-256 digest of the code. The provisional caps (20 per day, 200 in total) are placeholders until T7.5 sets them from a measured session.
+The provisional caps (20 per day, 200 in total) are placeholders until T7.5 sets them from a measured session.
+
+### Judge access (T7.10)
+Devpost requires working, free access for judges until judging ends (29 Jan 2027, 1:00 pm PT), so judges get a second code that the public caps can never block. Set both codes in the server environment (never in Git, a URL or a log): `NECRO_ACCESS_CODE` for the public and `NECRO_JUDGE_CODE` for judges. The judge code must be at least 12 characters and must differ from the public code, or the server refuses to start and says which rule failed (it never prints a code). The page has one code form that accepts either code and only shows "access granted"; the server decides the role.
+
+| | public code | judge code |
+|---|---|---|
+| Sessions per day / in total (placeholders) | 20 / 200 | 30 / 150 |
+| Session length / idle timeout | 180 s / 60 s | 300 s / 90 s (never above the 480 s stream limit) |
+| Counted in | public counters | its own counters in the same `var/caps.json` |
+
+A judge session is a real billed session. It obeys its own length and idle limits and its own daily and total caps, so a leaked judge code can cost at most 150 sessions of 5 minutes. Public caps never block a judge session and judge sessions never use public slots. Only one live session runs at a time: a client that connects while another role's session is live joins it (without a new slot) and can start its own once it ends. When the judge caps are reached the page shows the paused state with the demo-video link. Judge settings: `NECRO_JUDGE_MAX_SESSION_SECONDS`, `NECRO_JUDGE_IDLE_SECONDS`, `NECRO_JUDGE_DAILY_CAP`, `NECRO_JUDGE_TOTAL_CAP` (or the matching `--judge-...` flags). All allowance numbers are placeholders until T7.5 measures a real session and the owner reads the current price in the Bedrock console.
+
+Wrong guesses of either code share one attempt budget per client address (5 per minute) and one global budget (50 per minute), so probing both codes costs the same as probing one. Both codes are compared in constant time against SHA-256 digests. Every usage-log line has `"role": "public"` or `"role": "judge"` (older lines without it are public); the one-line summary adds ` role=judge` for judge sessions. The log holds counts and ids only.
+
+Emergency controls:
+- Cut judge or public access on a running server, no restart: create the file `disable-judge` or `disable-public` in the control directory (`NECRO_CONTROL_DIR`, default `var/control`), for example `touch var/control/disable-judge`. It is read on every connection and every second of a live session, so a live session of that role ends within a second. Delete the file to restore access.
+- Cut access at startup: set `NECRO_DISABLE_JUDGE=1` or `NECRO_DISABLE_PUBLIC=1` and restart the server.
+- Expiry: the judge code stops working after `NECRO_JUDGE_EXPIRES`, an ISO 8601 time with a UTC offset. The default is `2027-01-29T23:59:59-08:00` (end of 29 Jan 2027 Pacific Standard Time, about ten hours after judging ends). Use `none` for no expiry. Changing it needs a restart. To rotate a leaked judge code, set a new `NECRO_JUDGE_CODE` and restart.
+- A switched-off, expired or wrong code gets the same `bad_code` answer, so the page never says which.
+
+### What to paste in the Devpost form for judges
+Fill the placeholders yourself and send the real code only through the form (the field for judge login credentials), never in the repo:
+```
+App URL: <https URL of the hosted app>
+Access: open the URL, type the judge code below into "Access code", press Unlock, then "Start live voice" and allow the microphone.
+Judge code: <JUDGE CODE, set as NECRO_JUDGE_CODE on the server>
+Valid until: <date from NECRO_JUDGE_EXPIRES, default 29 Jan 2027 end of day PST>
+Limits: each live session lasts up to 5 minutes (90 s of silence ends it); the allowance is <judge daily cap> sessions a day and <judge total cap> in total.
+If voice shows "paused": the demo video at <demo video URL> shows the same session; contact <your email> to restore access.
+```
 Runtime files go under `var/` (gitignored): `var/usage.jsonl` (one JSON line per live session: `ts`, `session_id`, `seconds`, `streams`, `end_reason`, and summed `usage` with `input`/`output` `speechTokens`/`textTokens`; no transcript or email text), `var/caps.json` and `var/caps.json.lock`. Read the log with `tail -n 5 var/usage.jsonl`. The same numbers print as one `usage:` line when a session ends.
 When live voice is paused the page keeps the last transcript and evidence readable, but typed questions need a live stream, so searching is not available until voice is restarted.
 Guardrail live check (one short billed session with a 20 second cap): `NECRO_LIVE=1 .venv/bin/python scripts/live_guard_check.py`.

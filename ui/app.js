@@ -35,10 +35,15 @@
     }
   }
 
+  var codeSubmitted = false;
   function onFrame(data) {
     try {
       var r = P.parseFrame(data);
       if (!r.ok) { issue("ignored malformed event: " + r.error); return; }
+      if (codeSubmitted && !window.NecroBanner.isDenial(r.event)) {
+        codeSubmitted = false;
+        statusEl.textContent = "access granted";   // neutral: the same text for every kind of code
+      }
       handle(r.event);
     } catch (e) {
       issue("ignored event that failed to render: " + (e && e.message));
@@ -55,6 +60,7 @@
       if (!input.value) return;
       window.NecroAuth.set(input.value);
       input.value = "";
+      codeSubmitted = true;
       conn.reconnect();
     });
   } else {

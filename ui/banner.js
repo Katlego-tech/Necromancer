@@ -3,6 +3,9 @@
 (function (root) {
   "use strict";
   var CODE_REASONS = ["code_required", "bad_code"];
+  /* True for the events that ask for a code. Anything else after a submitted code means it was accepted;
+     the page never learns which kind of code (public or judge) matched. */
+  function isDenial(ev) { return !!ev && ev.type === "paused" && CODE_REASONS.indexOf(ev.reason) >= 0; }
   function isHttps(u) { return typeof u === "string" && /^https:\/\//.test(u); }
   function create(els) {
     return {
@@ -27,7 +30,7 @@
       }
     };
   }
-  var api = { create: create, isHttps: isHttps };
+  var api = { create: create, isHttps: isHttps, isDenial: isDenial };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NecroBanner = api;
 })(typeof window !== "undefined" ? window : this);

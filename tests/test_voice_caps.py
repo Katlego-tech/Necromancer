@@ -65,7 +65,8 @@ class CapStoreTest(unittest.TestCase):
         clock[0] = datetime.datetime(2026, 12, 2, 0, 1, tzinfo=datetime.timezone.utc)
         self.assertEqual(store.try_acquire(), (True, None))
         data = json.load(open(self.path))
-        self.assertEqual(data, {"total": 2, "day": "2026-12-02", "day_count": 1})
+        self.assertEqual(data, {"total": 2, "day": "2026-12-02", "day_count": 1,
+                                "judge_total": 0, "judge_day_count": 0})
 
     def test_corrupt_file_fails_closed_and_is_kept(self):
         os.makedirs(os.path.dirname(self.path))

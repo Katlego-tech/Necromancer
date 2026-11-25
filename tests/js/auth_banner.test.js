@@ -75,3 +75,23 @@ test("banner renders hostile message as text only and sets href only for https",
     assert.strictEqual(els.videoLink.getAttribute("href"), null);
   }
 });
+test("isDenial is true only for the paused events that ask for a code (T7.10: one neutral form for every code)", () => {
+  assert.strictEqual(Banner.isDenial(ev({ reason: "code_required" })), true);
+  assert.strictEqual(Banner.isDenial(ev({ reason: "bad_code" })), true);
+  for (const reason of ["daily_cap", "total_cap", "session_limit", "idle_timeout", "not_started"]) {
+    assert.strictEqual(Banner.isDenial(ev({ reason })), false, reason);
+  }
+  assert.strictEqual(Banner.isDenial({ type: "state", state: "idle" }), false);
+  assert.strictEqual(Banner.isDenial(null), false);
+});
+test("a cap pause (public or judge) shows the server text with textContent and the https video link, no code form", () => {
+  const { els, b } = banner();
+  b.show(ev({ reason: "total_cap", can_restart: false, message: "<img src=x onerror=alert(1)>", video_url: "https://example.com/v" }));
+  assert.strictEqual(els.msg.textContent, "<img src=x onerror=alert(1)>");
+  assert.strictEqual(els.videoSlot.hidden, false);
+  assert.strictEqual(els.videoLink.getAttribute("href"), "https://example.com/v");
+  assert.strictEqual(els.form.hidden, true);
+  assert.strictEqual(els.restart.hidden, true);
+  b.show(ev({ reason: "daily_cap", can_restart: false, video_url: "javascript:alert(1)" }));
+  assert.strictEqual(els.videoSlot.hidden, true);
+});

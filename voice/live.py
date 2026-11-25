@@ -34,7 +34,8 @@ CLOSE_TIMEOUT = 15.0
 class LiveController:
     def __init__(self, make_session, emitter, limits: Limits, caps: CapStore, usage_log: UsageLog, *,
                  factory=None, clock=time.monotonic, print_fn=print, tick: float = 1.0,
-                 video_url: str | None = None, autostart_on_connect: bool = True, registry=None):
+                 video_url: str | None = None, autostart_on_connect: bool = True, registry=None,
+                 role_allowed=None):
         self.make_session = make_session
         self.emitter = emitter
         self.limits = limits
@@ -47,6 +48,8 @@ class LiveController:
         self.video_url = video_url
         self.autostart_on_connect = autostart_on_connect
         self.registry = registry                # only used to show an alert without a live session
+        self.role_allowed = role_allowed or (lambda role: True)   # emergency switch and expiry
+        self.role = "public"                    # role that opened the live session
         self._alert_n = 0
         self.audio_sinks: list = []
         self.clear_sinks: list = []
@@ -68,14 +71,16 @@ class LiveController:
             ev["video_url"] = self.video_url
         return ev
 
-    def _emit_paused(self, reason: str) -> None:
-        self.emitter.paused(reason, MESSAGES[reason], CAN_RESTART[reason], self.video_url or None)
+    def _emit_paused(self, reason: str, audience: str | None = None) -> None:
+        self.emitter.paused(reason, MESSAGES[reason], CAN_RESTART[reason], self.video_url or None, audience)
 
-    def status_event(self) -> dict | None:
-        """The paused event describing why voice is off, or None while voice is live."""
+    def status_event(self, role: str = "public") -> dict | None:
+        """The paused event describing why voice is off for this role, or None while voice is live."""
         if self.state in ("starting", "live"):
             return None
-        left = self.caps.snapshot()
+        if not self.role_allowed(role):
+            return self.paused_event("bad_code")
+        left = self.caps.snapshot(role)
         if left["total_remaining"] <= 0:
             return self.paused_event("total_cap")
         if left["daily_remaining"] <= 0:
@@ -87,15 +92,15 @@ class LiveController:
         if self.session is not None and self.state == "live":
             self.session.feed_audio(pcm)
 
-    async def send_text(self, text: str) -> None:
+    async def send_text(self, text: str, role: str = "public") -> None:
         if self.session is None or self.state != "live":
-            self._emit_status()
+            self._emit_status(role)
             return
         await self.session.send_text(text)
 
-    async def summon(self, spirit_id: str) -> None:
+    async def summon(self, spirit_id: str, role: str = "public") -> None:
         if self.session is None or self.state != "live":
-            self._emit_status()
+            self._emit_status(role)
             return
         await self.session.summon(spirit_id)
 
@@ -122,30 +127,34 @@ class LiveController:
             self.emitter.transcript(f"alert{self._alert_n}", "spirit", line, True)
         return "visual"
 
-    def _emit_status(self) -> None:
-        ev = self.status_event()
+    def _emit_status(self, role: str = "public") -> None:
+        ev = self.status_event(role)
         if ev is not None:
-            self.emitter.paused(ev["reason"], ev["message"], ev["can_restart"], ev.get("video_url"))
+            self.emitter.paused(ev["reason"], ev["message"], ev["can_restart"], ev.get("video_url"), role)
 
     # ------------------------------------------------------------ lifecycle
-    async def ensure_started(self) -> bool:
+    async def ensure_started(self, role: str = "public") -> bool:
+        """Start a live session billed to `role`'s caps. If one is already live, join it (no new slot)."""
         async with self._lock:
             if self.state == "live":
                 return True
+            if not self.role_allowed(role):
+                self._emit_paused("bad_code", role)
+                return False
             self.state = "starting"
             try:
-                acquire = asyncio.ensure_future(asyncio.to_thread(self.caps.try_acquire))
+                acquire = asyncio.ensure_future(asyncio.to_thread(self.caps.try_acquire, role))
                 try:
                     ok, reason = await asyncio.shield(acquire)
                 except asyncio.CancelledError:
                     # The thread keeps running and may still take a slot. Account for it.
                     got = await asyncio.gather(acquire, return_exceptions=True)
                     if isinstance(got[0], tuple) and got[0][0]:
-                        self._log_aborted_start()
+                        self._log_aborted_start(role=role)
                     raise
                 if not ok:
                     self.state = "off"
-                    self._emit_paused(reason)
+                    self._emit_paused(reason, role)
                     return False
                 self.emitter.events.clear()
                 session = self.make_session()
@@ -159,7 +168,7 @@ class LiveController:
                     except Exception:
                         pass
                     if isinstance(e, asyncio.CancelledError):
-                        self._log_aborted_start(session)
+                        self._log_aborted_start(session, role)
                         raise
                     self.emitter.error("live voice failed to start")
                     self.last_pause = "not_started"
@@ -167,10 +176,11 @@ class LiveController:
                     self._emit_paused("not_started")
                     return False
                 self.session = session
+                self.role = role
                 self._started = self.clock()
                 self.last_pause = None
                 self.state = "live"
-                self._watchdog = asyncio.create_task(self._watch(session, self._started))
+                self._watchdog = asyncio.create_task(self._watch(session, self._started, role))
                 if self.clients == 0 and self._disc is None:
                     self._disc = asyncio.create_task(self._disconnect_timer())
                 return True
@@ -178,14 +188,14 @@ class LiveController:
                 if self.state == "starting":
                     self.state = "off"
 
-    def _log_aborted_start(self, session=None) -> None:
+    def _log_aborted_start(self, session=None, role: str = "public") -> None:
         """A start cancelled after taking a cap slot keeps the slot (a Bedrock stream may have
         been opened and billed) but must leave a usage line, so the slot is accounted for."""
         try:
             usage = session.usage if session is not None else None
             record = self.usage_log.append(
                 seconds=0, streams=usage.streams() if usage else 0, end_reason="start_cancelled",
-                usage=(usage or UsageMeter()).totals())
+                usage=(usage or UsageMeter()).totals(), role=role)
             self.print_fn(format_summary(record))
         except Exception:
             self.emitter.error("usage log could not be written")
@@ -203,6 +213,7 @@ class LiveController:
             self._watchdog = None
             self._disc = None
             session, self.session = self.session, None
+            role = self.role
             seconds = self.clock() - self._started
             self._emit_paused(reason)
             try:
@@ -211,7 +222,7 @@ class LiveController:
                 self.emitter.error("live voice did not close cleanly")
             try:
                 record = self.usage_log.append(seconds=seconds, streams=session.usage.streams(),
-                                               end_reason=reason, usage=session.usage.totals())
+                                               end_reason=reason, usage=session.usage.totals(), role=role)
                 self.print_fn(format_summary(record))
             except Exception:
                 self.emitter.error("usage log could not be written")
@@ -233,14 +244,17 @@ class LiveController:
         self._stops.add(task)
         task.add_done_callback(self._stops.discard)
 
-    async def _watch(self, session, started: float) -> None:
+    async def _watch(self, session, started: float, role: str = "public") -> None:
         while True:
             await asyncio.sleep(self.tick)
             now = self.clock()
-            if now - started >= self.limits.max_session_seconds:
+            if not self.role_allowed(role):  # code switched off or expired while the session runs
+                self._spawn_stop("bad_code")
+                return
+            if now - started >= self.limits.session_seconds(role):
                 self._spawn_stop("session_limit")
                 return
-            if now - max(session.last_activity, started) >= self.limits.idle_seconds:
+            if now - max(session.last_activity, started) >= self.limits.idle_limit(role):
                 self._spawn_stop("idle_timeout")
                 return
 

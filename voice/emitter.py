@@ -25,7 +25,8 @@ class Emitter:
             ev = {"type": "error", "message": f"engine produced an invalid {ev.get('type')} event: {err}"}
         self.events.append(ev)
         if self._record:
-            self._record.write(json.dumps(ev) + "\n")
+            # `_audience` only routes an event to one role's connections; it is not part of the protocol.
+            self._record.write(json.dumps({k: v for k, v in ev.items() if k != "_audience"}) + "\n")
             self._record.flush()
         for sink in list(self.sinks):
             try:
@@ -53,10 +54,13 @@ class Emitter:
     def error(self, message: str) -> bool:
         return self.emit({"type": "error", "message": message})
 
-    def paused(self, reason: str, message: str, can_restart: bool, video_url: str | None = None) -> bool:
+    def paused(self, reason: str, message: str, can_restart: bool, video_url: str | None = None,
+               audience: str | None = None) -> bool:
         ev = {"type": "paused", "reason": reason, "message": message, "can_restart": can_restart}
         if video_url is not None:
             ev["video_url"] = video_url
+        if audience is not None:  # only that role's connections receive it (a cap hit by one role)
+            ev["_audience"] = audience
         return self.emit(ev)
 
     def close(self) -> None:

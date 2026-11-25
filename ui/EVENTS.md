@@ -94,6 +94,9 @@ Sent when live voice is off. Required: `reason` (one of `daily_cap`, `total_cap`
 (non-empty string written by the server, never user content), `can_restart` (boolean).
 Optional: `video_url` (null or a string starting with `https://`).
 A later `state` event other than `idle` means live voice resumed. There is no separate resume event.
+Public and judge sessions use the same reasons and texts, so the page cannot tell which code matched. A judge session that
+reaches its own daily or total cap gets `daily_cap` or `total_cap` with `can_restart: false` and the `video_url`, like the public caps.
+The server routes a cap pause only to the connections of the role that hit it; no event carries a role.
 ```json
 {"type":"paused","reason":"session_limit","message":"The live session reached its time limit.","can_restart":true}
 ```

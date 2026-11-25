@@ -61,7 +61,7 @@ class LogTest(unittest.TestCase):
             lines = open(path, encoding="utf-8").read().splitlines()
         self.assertEqual(len(lines), 2)
         data = json.loads(lines[0])
-        self.assertEqual(set(data), {"ts", "session_id", "seconds", "streams", "end_reason", "usage"})
+        self.assertEqual(set(data), {"ts", "session_id", "seconds", "streams", "end_reason", "role", "usage"})
         self.assertEqual(len(data["session_id"]), 32)
         self.assertRegex(data["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual(data["usage"]["output"]["textTokens"], 4)
