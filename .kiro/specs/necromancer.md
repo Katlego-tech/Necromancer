@@ -177,10 +177,10 @@ backend over a WebSocket; it does not contain business logic.
 
 ### Milestone 4 — Wayback Medium (Days 9–11: 26–28 Nov)
 - [x] **T4.1** Implement `spirits/wayback/tools.py`: `list_snapshots` and `read_snapshot` using CDX API.
-- [ ] **T4.2** Build local snapshot cache: download and store one curated historical site (e.g., pets.com 1999).
-- [ ] **T4.3** Write `spirits/wayback/persona.py`: Wayback Medium persona prompt.
-- [ ] **T4.4** Add `summon("wayback")` path; test a voice question end-to-end.
-- [ ] **T4.5** Add Wayback costume JSON and browser-trim overlay sprite: `costumes/wayback/retro_1999.json`.
+- [x] **T4.2** Build local snapshot cache: download and store one curated historical site (e.g., pets.com 1999). (Cached `http://www.pets.com/` at `20000617112828` via `scripts/prewarm_wayback.py`; the 1999 capture was mostly navigation links. The cache is gitignored and must be rebuilt on a fresh checkout.)
+- [x] **T4.3** Write `spirits/wayback/persona.py`: Wayback Medium persona prompt. (The persona lives in `spirits/wayback/spirit.py`, not `persona.py`; it names no colours or props.)
+- [x] **T4.4** Add `summon("wayback")` path; test a voice question end-to-end. (One live run, typed input, no microphone: the summon from a stub Enron spirit (no index in the worktree) reached the Wayback Medium, and the question got a `read_snapshot` call, a snapshot evidence event, the right URL and timestamp (spoken digit by digit) and a quote that matches the cached text. Not clean: the post-summon greeting was flagged by the engine as a grounding violation, a false positive because the summon result counts as cold. Not verified: microphone, speaker, a summon with the real Enron tools, list_snapshots live, any site other than pets.com. Report: `.agents/tasks/wayback-spirit/artifacts/report_wayback.md`, not committed.)
+- [x] **T4.5** Add Wayback costume JSON and browser-trim overlay sprite: `costumes/wayback/retro_1999.json`. (Costume is `mascot/costumes/wayback.json`, palette from the cached page. No separate browser-trim overlay sprite was made; the `browser_halo` and `pixel_accents` props are used.)
 - [x] **T4.6** Write unit tests for Wayback tools; verify cached-only paths work offline.
 
 ### Milestone 5 — Grid Ghost (Days 12–13: 29–30 Nov)

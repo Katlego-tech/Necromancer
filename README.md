@@ -9,10 +9,10 @@ Built for **Kiroween 2026**, Frankenstein category, with Kiro (specs, steering f
 | Spirit | Stitched to | Status |
 |---|---|---|
 | Enron Ghost | CMU Enron email dataset, indexed in SQLite FTS5 | Search tools and ingestion pipeline built and tested |
-| Wayback Medium | Wayback Machine CDX and raw `id_` snapshot APIs | Tools with offline cache built and tested; no site cached yet |
+| Wayback Medium | Wayback Machine CDX and raw `id_` snapshot APIs | Tools, persona, costume and one cached snapshot built; summoned by voice in one live typed-text run (see Voice (Wayback Medium)) |
 | Grid Ghost | EskomSePush schedule data, plus a replay mode | Replay tools built against a **synthetic** fixture; live API not implemented |
 
-The shared voice engine (Amazon Nova Sonic on Amazon Bedrock, `voice/`) and the Enron Ghost by voice are built. A live run with typed questions and the real Enron index passed (see Voice below). Microphone input, speaker playback and mascot rendering in a browser have not been tested by a person yet. Wayback Medium and Grid Ghost are not wired into the voice engine. See `.kiro/specs/necromancer.md` for the task list.
+The shared voice engine (Amazon Nova Sonic on Amazon Bedrock, `voice/`) and the Enron Ghost by voice are built. A live run with typed questions and the real Enron index passed (see Voice below). Microphone input, speaker playback and mascot rendering in a browser have not been tested by a person yet. The Wayback Medium is wired into the voice engine (one live typed run, see below); Grid Ghost is not. See `.kiro/specs/necromancer.md` for the task list.
 
 ## Grounding rule
 
@@ -35,8 +35,26 @@ A 2D white ghost, "The Little Necromancer". The mascot is 2D for the hackathon; 
 - **Page:** `http://www.pets.com/` (Pets.com home page, June 2000), served by the Wayback Machine at timestamp `20000617112828` (requested and served timestamps were identical).
 - **How it was chosen:** `scripts/prewarm_wayback.py --probe` made one capture listing and one or two reads per candidate (pets.com 1999 and 2000, altavista.com 1997 and 1998, geocities.com 1998). The pets.com June 2000 page gave short headline-and-blurb text that works as a spoken answer. The 1999 pets.com capture is mostly navigation links.
 - **Cache:** `data/wayback/` is gitignored; rebuild it with `scripts/prewarm_wayback.py --site http://www.pets.com/ --timestamp 20000617112828`.
-- **Costume:** `mascot/costumes/wayback.json` takes its palette from this snapshot's HTML colours and records the same URL and timestamp.
+- **Costume:** `mascot/costumes/wayback.json` takes its palette from this snapshot's HTML colours (body `#FFFFCC`, trim `#99CC33`, eyes `#FFCC00`) and records the same URL and timestamp.
+- **Reused code:** none.
 
+## Voice (Wayback Medium)
+Pre-warm the cache once (a few polite requests to the Wayback Machine; the voice run itself then needs no network for this site):
+```bash
+.venv/bin/python scripts/prewarm_wayback.py --site http://www.pets.com/ --timestamp 20000617112828
+```
+Start the server as the Wayback Medium, or start as the Enron Ghost and ask it to summon the Wayback Medium:
+```bash
+.venv/bin/python -m voice.server --spirit wayback --port 8765
+.venv/bin/python -m voice.server --spirit enron --db data/enron/enron.sqlite --port 8765   # then: "summon the Wayback Medium"
+```
+Live check (one summon and one question, typed, silent microphone; the Wayback fetch function raises, so any network use shows as a failure): `NECRO_LIVE=1 AWS_REGION=us-east-1 .venv/bin/python scripts/live_wayback_e2e.py`. It writes a report with a verbatim check of every double-quoted span against the cached snapshot text.
+Limits:
+- The spirit speaks only archived text. It makes no claim about layout, images or how the page looked, and there are no screenshots.
+- Only one site is cached (pets.com, June 2000). Other pages need live Wayback requests, which can be rate limited; on any failure the tools return the cold trail ("The trail goes cold.").
+- Snapshot text is capped at 2 MB of HTML before conversion to text.
+- The Wayback Medium speaks with the Nova Sonic voice `tiffany`; the Enron Ghost uses `matthew`.
+- Live run result (typed input): the summon handed over to the Wayback Medium and the spirit read the cached page with the correct URL, timestamp and a quote that matches the snapshot. It also spoke an unrequested greeting after the summon, and the engine flagged that turn as a grounding violation (false positive: the summon tool result looks like a cold result to the checker). Microphone and speaker use were not tested.
 ## Privacy note on the Enron data
 
 The dataset was made public during a federal investigation and contains real people's email. Many of the people in it were not involved in any wrongdoing. The CMU distributor asks users to be sensitive to their privacy. This project quotes emails only as historical evidence, and the Enron Ghost should focus on the executives and events in the public record.
