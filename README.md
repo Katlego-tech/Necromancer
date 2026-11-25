@@ -153,6 +153,10 @@ Indexing takes about 12 minutes and produces a roughly 1 GB database. The full r
 
 Copy `.env.example` to `.env` and fill in values. `.env` is gitignored. Never commit credentials.
 
+## Hosting on EC2
+
+`deploy/` holds a ready-to-run kit for one EC2 instance (instance role, Caddy HTTPS, systemd, smoke test, rollback). Start with `deploy/RUNBOOK.md`; the evidence and costs are in `deploy/DECISIONS.md`. Nothing is launched by the repository.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,28 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/caddy.service
+[Unit]
+Description=Caddy HTTPS proxy for Necromancer
+After=network-online.target necromancer.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=caddy
+Group=caddy
+# Contains NECRO_SITE=<public hostname> (see deploy/RUNBOOK.md). No secrets.
+EnvironmentFile=/etc/necromancer/caddy.env
+Environment=XDG_DATA_HOME=/var/lib/caddy XDG_CONFIG_HOME=/var/lib/caddy
+ExecStart=/usr/local/bin/caddy run --config /opt/necromancer/deploy/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /opt/necromancer/deploy/Caddyfile --adapter caddyfile --force
+Restart=on-failure
+RestartSec=5
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/caddy
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

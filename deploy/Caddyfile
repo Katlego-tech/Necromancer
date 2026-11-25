@@ -1,0 +1,21 @@
+# Caddy terminates HTTPS (automatic certificates) and proxies to the app on 127.0.0.1:8765.
+# NECRO_SITE is the public hostname, for example necro.example.com or 203-0-113-10.sslip.io.
+# It comes from /etc/necromancer/caddy.env (see deploy/RUNBOOK.md).
+#
+# What the app needs from the proxy:
+#  * Host is forwarded unchanged (Caddy's default). voice/server.py refuses a WebSocket upgrade when
+#    the Origin host differs from the Host it receives, so do NOT add `header_up Host ...`.
+#  * WebSocket upgrades pass through (Caddy handles Upgrade/Connection itself; no idle timeout).
+#  * The app sees every visitor as 127.0.0.1. The wrong-code lockout is therefore effectively the
+#    global limit (50 attempts per minute), see voice/guard.py.
+# To test without Let's Encrypt production rate limits, add a global block at the top:
+#   { acme_ca https://acme-staging-v02.api.letsencrypt.org/directory }
+
+{$NECRO_SITE} {
+	reverse_proxy {$NECRO_UPSTREAM:127.0.0.1:8765}
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

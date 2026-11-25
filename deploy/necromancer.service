@@ -1,0 +1,40 @@
+# Installed by deploy/bootstrap.sh as /etc/systemd/system/necromancer.service
+[Unit]
+Description=Necromancer voice server (public mode)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=necro
+Group=necro
+WorkingDirectory=/opt/necromancer
+# NECRO_ACCESS_CODE and the NECRO_* limits live here, outside the repo (root:root, mode 600).
+EnvironmentFile=/etc/necromancer/necromancer.env
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Warm the page cache first; the leading "-" means a failed warm-up does not block the start.
+ExecStartPre=-/opt/necromancer/deploy/warm_index.sh /opt/necromancer/data/enron/enron.sqlite
+# The app binds 127.0.0.1 only; Caddy (deploy/Caddyfile) is the only public listener.
+# --public refuses to start when NECRO_ACCESS_CODE is empty.
+ExecStart=/opt/necromancer/.venv/bin/python -m voice.server --spirit enron --db /opt/necromancer/data/enron/enron.sqlite --public --port 8765
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=300
+# No MemoryMax on purpose: the page cache of the 1 GB index is charged to the unit's cgroup and a
+# low limit would make the kernel evict the index again.
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/necromancer/var /opt/necromancer/data/wayback
+
+[Install]
+WantedBy=multi-user.target

@@ -11,3 +11,4 @@ data/wayback/
 .worktrees/
 .agents/
 var/
+*.pem
