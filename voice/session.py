@@ -570,7 +570,8 @@ class VoiceSession:
                         self.emitter.error("grounding: " + p)
                 self._cold = False
             elif finals:
-                for p in check_turn(finals, self.tool_results, after_cold=self._cold):
+                for p in check_turn(finals, self.tool_results, after_cold=self._cold,
+                                    spirit=self.spirit.id):
                     self.grounding_violations.append(p)
                     self.emitter.error("grounding: " + p)
                 self._cold = False

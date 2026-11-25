@@ -1,9 +1,13 @@
 """Live end-to-end run: real Nova Sonic, summon from Enron Ghost to Wayback Medium, silent-audio mode.
     NECRO_LIVE=1 .venv/bin/python scripts/live_wayback_e2e.py [--out DIR] [--tag TAG] [--enron-db PATH]
-One summon request and one question about the pre-warmed snapshot (no network: the Wayback fetch
-function raises, so any network use shows up as a failure). Writes a report that lists what the
-tools returned next to what the model said, with a verbatim check of every double-quoted span
-against the cached snapshot text. Credentials are never printed or written.
+    (NECRO_WAYBACK_CACHE=DIR points the run at another cache, for example the main checkout's)
+One summon request and the natural demo question ("Summon pets.com in 1999. What were you selling?"),
+which needs list_snapshots(url, year) and then read_snapshot(url, timestamp) from the pre-warmed
+cache (scripts/prewarm_wayback.py --demo). No network: the Wayback fetch function raises, so any
+network use shows up as a failure. Writes a report that lists what the tools returned next to what
+the model said, with a verbatim check of every double-quoted span against the cached snapshot text,
+the spoken date against the tool result, and the engine's own grounding check. Credentials are
+never printed or written.
 """
 from __future__ import annotations
 import argparse
@@ -18,15 +22,16 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 from live_enron_e2e import ask, scrub  # noqa: E402
 from voice.emitter import Emitter  # noqa: E402
-from voice.grounding_check import COLD, normalize, quoted_spans  # noqa: E402
+from voice.grounding_check import COLD, check_turn, date_mentions, normalize, quoted_spans  # noqa: E402
 from voice.session import VoiceSession  # noqa: E402
 from voice.stream import BedrockFactory  # noqa: E402
 from voice.summon import Registry, Spirit  # noqa: E402
 SITE = "http://www.pets.com/"
-TIMESTAMP = "20000617112828"
+YEAR = "1999"
 SUMMON_REQUEST = "Please summon the Wayback Medium."
-QUESTION = f"What does the archived page {SITE} from {TIMESTAMP} say?"
-DEFAULT_OUT = ROOT / ".agents" / "tasks" / "wayback-spirit" / "artifacts"
+QUESTION = "Summon pets.com in 1999. What were you selling?"
+DEFAULT_OUT = ROOT / ".agents" / "tasks" / "wayback-polish" / "artifacts"
+CACHE_DIR = Path(__import__("os").environ.get("NECRO_WAYBACK_CACHE") or ROOT / "data" / "wayback")
 TS_RE = re.compile(r"\b\d{14}\b")
 URL_RE = re.compile(r"https?://[^\s\"',;]+|www\.[^\s\"',;]+", re.I)
 DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "three": "3", "four": "4",
@@ -57,9 +62,13 @@ def build_enron(db: str | None) -> tuple[Spirit, str]:
         return enron.make_spirit(str(default)), f"real Enron index at {default}"
     return (Spirit("enron", enron.PERSONA, enron.VOICE_ID, (), "mascot/costumes/enron.json"),
             "STUB enron spirit: real persona, voice and costume, NO tools and no data (no index present)")
-def cached_text() -> str:
+def cached_text(url: str = SITE, timestamp: str | None = None) -> str:
+    """Text of a cached snapshot; with no timestamp, a probe that the demo listing is cached."""
     from spirits.wayback import tools
-    res = tools.read_snapshot(SITE, TIMESTAMP, fetch=no_network)
+    if timestamp is None:
+        res = tools.list_snapshots(url, YEAR, cache_dir=str(CACHE_DIR), fetch=no_network)
+        return res.get("content") or ""
+    res = tools.read_snapshot(url, timestamp, cache_dir=str(CACHE_DIR), fetch=no_network)
     return res.get("content") or ""
 def short(v, n=300):
     return v[:n] if isinstance(v, str) else v
@@ -69,7 +78,7 @@ def render(turns: list[dict], session: VoiceSession, emitter: Emitter, enron_not
     spirit_events = [e["spirit"] for e in ev if e["type"] == "spirit"]
     lines = ["# Live Wayback Medium report", "",
              f"- Enron side: {enron_note}",
-             f"- Cached snapshot: {SITE} at {TIMESTAMP} ({len(snap_text)} chars of text)",
+             f"- Cache: {CACHE_DIR} (listing for {SITE} {YEAR} present, {len(snap_text)} chars)",
              f"- Wayback voice id: tiffany (spirits.wayback.spirit.VOICE_ID); Enron voice id: matthew",
              f"- Spirit events in order: {spirit_events}",
              f"- Network fetch attempts by the wayback tools: {NET_CALLS or 'none'}", ""]
@@ -100,8 +109,14 @@ def render(turns: list[dict], session: VoiceSession, emitter: Emitter, enron_not
         result_urls = {m.get("url") for t in r["tools"] for m in t["result"].get("evidence") or []}
         contents = [normalize(t["result"]["content"]) for t in r["tools"]
                     if isinstance(t["result"].get("content"), str)]
-        snap_n = normalize(snap_text)
+        # Independent re-read of every snapshot the model was shown, straight from the cache.
+        reads = [m for t in r["tools"] if t["name"] == "read_snapshot"
+                 for m in t["result"].get("evidence") or []]
+        snap_n = " ".join(normalize(cached_text(m["url"], m["timestamp"])) for m in reads)
+        allowed_dates = {t["result"].get("spoken_date") for t in r["tools"]} | {
+            m.get("spoken_date") for t in r["tools"] for m in t["result"].get("evidence") or []}
         flags, quote_checks = [], []
+        results = [t["result"] for t in r["tools"]]
         for text in r["spirit_turns"]:
             lines.append(f"> {text}")
             for span in quoted_spans(text):
@@ -115,17 +130,16 @@ def render(turns: list[dict], session: VoiceSession, emitter: Emitter, enron_not
                     flags.append(f"quote not in cached snapshot: {span!r}")
             said_ts = spoken_timestamps(text)
             said_urls = {u.rstrip(".") for u in URL_RE.findall(text)}
-            if r["tools"] and r["tools"][-1]["name"] == "read_snapshot":
-                lines.append(f"- timestamps stated: {sorted(said_ts) or 'none'}; match tool result: "
-                             f"{bool(said_ts) and said_ts <= result_ts}")
-                lines.append(f"- URLs stated: {sorted(said_urls) or 'none'}; match tool result: "
-                             f"{bool(said_urls) and all(any(u.rstrip('/').endswith(x.rstrip('/').split('//')[-1]) or x.rstrip('/').split('//')[-1].endswith(u.rstrip('/').split('//')[-1]) for x in result_urls if x) for u in said_urls)}")
-                if not said_ts:
-                    flags.append("no 14-digit timestamp stated")
-                elif not said_ts <= result_ts:
-                    flags.append(f"timestamp not from tool result: {sorted(said_ts - result_ts)}")
-                if not said_urls:
-                    flags.append("no URL stated (spoken form may be 'pets dot com')")
+            lines.append(f"- dates stated (month, day, year): {date_mentions(text) or 'none'}; "
+                         f"spoken_date values in tool results: {sorted(d for d in allowed_dates if d)}")
+            lines.append(f"- 14-digit timestamps stated: {sorted(said_ts) or 'none'}; URLs stated: "
+                         f"{sorted(said_urls) or 'none'}")
+            for p in check_turn(text, results, spirit="wayback"):
+                flags.append("grounding_check: " + p)
+            if said_ts - result_ts:
+                flags.append(f"timestamp not from tool result: {sorted(said_ts - result_ts)}")
+            if reads and not date_mentions(text):
+                flags.append("no spoken date stated")
         if not r["spirit_turns"]:
             lines.append("> (no final spirit text)")
             flags.append("no final spirit text")
@@ -157,12 +171,12 @@ async def run(out: Path, tag: str, enron_db: str | None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     snap_text = cached_text()
     if not snap_text:
-        print("No cached snapshot; run scripts/prewarm_wayback.py first.", file=sys.stderr)
+        print("No cached listing; run scripts/prewarm_wayback.py --demo first.", file=sys.stderr)
         return 3
     enron_spirit, enron_note = build_enron(enron_db)
     registry = Registry()
     registry.register(enron_spirit)
-    registry.register(make_wayback(fetch=no_network))
+    registry.register(make_wayback(cache_dir=str(CACHE_DIR), fetch=no_network))
     emitter = Emitter(str(out / f"events_live{tag}.jsonl"))
     session = VoiceSession(registry, "enron", BedrockFactory(), emitter, turn_grace=12.0)
     turns = []

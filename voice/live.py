@@ -10,7 +10,7 @@ import asyncio
 import time
 
 from voice.guard import CapStore, Limits
-from voice.usage import UsageLog, format_summary
+from voice.usage import UsageLog, UsageMeter, format_summary
 
 MESSAGES = {
     "daily_cap": "Today's live voice sessions are used up. Come back tomorrow.",
@@ -134,7 +134,15 @@ class LiveController:
                 return True
             self.state = "starting"
             try:
-                ok, reason = await asyncio.to_thread(self.caps.try_acquire)
+                acquire = asyncio.ensure_future(asyncio.to_thread(self.caps.try_acquire))
+                try:
+                    ok, reason = await asyncio.shield(acquire)
+                except asyncio.CancelledError:
+                    # The thread keeps running and may still take a slot. Account for it.
+                    got = await asyncio.gather(acquire, return_exceptions=True)
+                    if isinstance(got[0], tuple) and got[0][0]:
+                        self._log_aborted_start()
+                    raise
                 if not ok:
                     self.state = "off"
                     self._emit_paused(reason)
@@ -151,6 +159,7 @@ class LiveController:
                     except Exception:
                         pass
                     if isinstance(e, asyncio.CancelledError):
+                        self._log_aborted_start(session)
                         raise
                     self.emitter.error("live voice failed to start")
                     self.last_pause = "not_started"
@@ -168,6 +177,18 @@ class LiveController:
             finally:
                 if self.state == "starting":
                     self.state = "off"
+
+    def _log_aborted_start(self, session=None) -> None:
+        """A start cancelled after taking a cap slot keeps the slot (a Bedrock stream may have
+        been opened and billed) but must leave a usage line, so the slot is accounted for."""
+        try:
+            usage = session.usage if session is not None else None
+            record = self.usage_log.append(
+                seconds=0, streams=usage.streams() if usage else 0, end_reason="start_cancelled",
+                usage=(usage or UsageMeter()).totals())
+            self.print_fn(format_summary(record))
+        except Exception:
+            self.emitter.error("usage log could not be written")
 
     async def stop(self, reason: str) -> None:
         async with self._lock:

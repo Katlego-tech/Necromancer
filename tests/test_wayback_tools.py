@@ -129,7 +129,7 @@ class WaybackToolsTest(unittest.TestCase):
     def test_wrong_shape_cache_is_refetched_not_raised(self):
         import os
         for body in ({"snapshots": [{"timestamp": "19990201000000"}, 5]}, {"snapshots": "x"}):
-            tools._cache_write(tools._cache_path(self.cache, "cdx", URL, "1999"), body)
+            tools._cache_write(tools._cache_path(self.cache, "cdx", tools._site_key(URL), "1999"), body)
             f = Fake((200, "x", json.dumps(CDX).encode()))
             self.assertEqual(len(self.lst(f)["evidence"]), 2)
             self.assertEqual(len(f.calls), 1)

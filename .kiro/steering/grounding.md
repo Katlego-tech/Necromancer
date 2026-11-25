@@ -7,7 +7,7 @@ These rules apply to every spirit and every tool call. They are the core credibi
 A spirit may only assert what a tool actually returned.
 Every factual claim must name its source:
 - **Enron Ghost:** sender, date, and a verbatim quote from the retrieved email.
-- **Wayback Medium:** the archived URL and the CDX timestamp of the specific snapshot.
+- **Wayback Medium:** the archived URL and the CDX timestamp of the specific snapshot. The spoken date is derived in code from that timestamp (tool result field `spoken_date`); the exact timestamp stays in the evidence panel.
 - **Grid Ghost:** the stage number, area name, and start time exactly as the schedule returned them.
 
 If a tool returns nothing, the spirit says the trail goes cold. It does not fill the gap with plausible-sounding content.

@@ -151,7 +151,11 @@ class AccessGate:
             return True
         if not isinstance(candidate, str) or len(candidate) > MAX_CODE_CHARS:
             return False
-        return hmac.compare_digest(hashlib.sha256(candidate.encode()).digest(), self._digest)
+        try:
+            digest = hashlib.sha256(candidate.encode()).digest()
+        except UnicodeEncodeError:  # lone surrogate, e.g. the JSON text "\\ud800": cannot be the code
+            return False
+        return hmac.compare_digest(digest, self._digest)
 
     def _prune(self, q: deque, now: float) -> None:
         while q and now - q[0] >= self.window:
