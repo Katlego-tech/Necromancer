@@ -100,6 +100,52 @@ class AlertTest(unittest.IsolatedAsyncioTestCase):
         interrupted = [e for e in self.em.events if e["type"] == "transcript" and e["turn_id"] == "s1" and e["final"]]
         self.assertTrue(interrupted)
 
+    async def test_waits_for_a_running_tool_call_instead_of_cutting_it_off(self):
+        import threading
+        release = threading.Event()
+        def slow(args):
+            release.wait(5)
+            return dict(fb.EMAIL_RESULT)
+        reg = Registry()
+        reg.register(make_spirit("enron", handler=slow))
+        reg.register(grid.make_spirit())
+        self.factory = FakeFactory([], [speak()], [])
+        self.em = Emitter()
+        s = VoiceSession(reg, "enron", self.factory, self.em, renew_after=1e9, reader_grace=0.2,
+                         frame_seconds=0.003, alert_wait=0.05)
+        self.s = s
+        await s.start()
+        self.addAsyncCleanup(s.close)
+        self.addCleanup(release.set)
+        self.factory.streams[0].push(fb.tool_use("lookup", "t1", {"query": "raptor"}))
+        await wait_for(lambda: s._active is not None and bool(s._active.pending))
+        await s.alert("grid", ALERT["prompt"], **ARGS)
+        await asyncio.sleep(0.4)                 # far longer than alert_wait
+        self.assertEqual(len(self.factory.streams), 1)   # still waiting: the tool is running
+        release.set()
+        await self.finish()
+        self.assertEqual(len(self.factory.streams), 3)
+        self.assertTrue(any(t["name"] == "lookup" for t in s.tool_log))   # the tool result was kept
+        self.assertEqual([e for e in self.em.events if e["type"] == "error"], [])
+    async def test_a_stuck_tool_eventually_gives_up_and_the_alert_still_fires(self):
+        import threading
+        release = threading.Event()
+        reg = Registry()
+        reg.register(make_spirit("enron", handler=lambda a: (release.wait(5), dict(fb.EMAIL_RESULT))[1]))
+        reg.register(grid.make_spirit())
+        self.factory = FakeFactory([], [speak()], [])
+        self.em = Emitter()
+        s = VoiceSession(reg, "enron", self.factory, self.em, renew_after=1e9, reader_grace=0.2,
+                         frame_seconds=0.003, alert_wait=0.05, alert_tool_wait=0.2)
+        self.s = s
+        await s.start()
+        self.addAsyncCleanup(s.close)
+        self.addCleanup(release.set)
+        self.factory.streams[0].push(fb.tool_use("lookup", "t1", {"query": "raptor"}))
+        await wait_for(lambda: s._active is not None and bool(s._active.pending))
+        await s.alert("grid", ALERT["prompt"], **ARGS)
+        await self.finish()
+        self.assertEqual(len(self.factory.streams), 3)
     async def test_waits_for_open_user_asr_block(self):
         s = await self.start([], [speak()], [], alert_wait=0.15)
         first = self.factory.streams[0]

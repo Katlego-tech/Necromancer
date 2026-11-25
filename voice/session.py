@@ -59,7 +59,7 @@ class VoiceSession:
                  filler_after: float = 1.5, renew_after: float = 420.0,
                  close_cap: float = 10.0, history_cap: int = 200_000,
                  summon_grace: float = 5.0, turn_grace: float = 0.0,
-                 reader_grace: float = 2.0, alert_wait: float = 8.0,
+                 reader_grace: float = 2.0, alert_wait: float = 8.0, alert_tool_wait: float = 30.0,
                  alert_speak_timeout: float = 6.0):
         self.registry = registry or DEFAULT_REGISTRY
         self.factory = factory
@@ -75,6 +75,7 @@ class VoiceSession:
         self.turn_grace = turn_grace            # wait this long after an END_TURN text block
         self.reader_grace = reader_grace        # wait this long for the last usageEvent after sessionEnd
         self.alert_wait = alert_wait            # wait this long for an open turn before barging in
+        self.alert_tool_wait = alert_tool_wait  # but wait up to this long for a running tool call
         self.alert_speak_timeout = alert_speak_timeout  # no model audio after this long: retry, then scripted line
         self.usage = UsageMeter()
         self.last_activity = clock()
@@ -162,12 +163,13 @@ class VoiceSession:
         self._alert_task = asyncio.create_task(self._run_alert(self._alert))
         return "started"
 
-    def _alert_must_wait(self) -> tuple[bool, bool]:
-        """(handover in progress, someone is talking)."""
+    def _alert_must_wait(self) -> tuple[bool, bool, bool]:
+        """(handover in progress, someone is talking, a tool call is running)."""
         conn = self._active
         user_open = conn is not None and any(b.get("role") == "USER" for b in conn.blocks.values())
+        tooling = conn is not None and bool(conn.pending)
         return (self._handover_active or self._pending is not None,
-                self._turn is not None or self.state == "speaking" or user_open)
+                self._turn is not None or self.state == "speaking" or user_open, tooling)
 
     async def _run_alert(self, a: dict) -> None:
         loop = asyncio.get_running_loop()
@@ -176,10 +178,15 @@ class VoiceSession:
         try:
             began = loop.time()
             while True:
-                handing, talking = self._alert_must_wait()
-                if not handing and not talking:
+                handing, talking, tooling = self._alert_must_wait()
+                if not handing and not talking and not tooling:
                     break
-                if not handing and loop.time() - began >= self.alert_wait:
+                waited = loop.time() - began
+                # A running tool call is never cut off by the short barge-in timer: switching
+                # spirits closes the stream that is waiting for its result. Only a stuck tool
+                # (alert_tool_wait) gives up.
+                limit = self.alert_tool_wait if tooling else self.alert_wait
+                if not handing and waited >= limit:
                     self._barged = False
                     self._barge_in()
                     break
