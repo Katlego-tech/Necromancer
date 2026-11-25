@@ -120,5 +120,27 @@ class VoiceGroundingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(types(em, "evidence")[0]["content"], text)
         await s.close()
 
+class CheckTurnTest(unittest.TestCase):
+    R = [{"source": "s", "content": "Sock puppet sale ends today for everyone.",
+          "evidence": [{"url": "http://www.pets.com/", "timestamp": "20000617112828"}]}]
+
+    def test_summon_result_is_not_cold(self):
+        from voice.grounding_check import is_cold
+        self.assertFalse(is_cold({"summoning": "wayback"}))
+
+    def test_spoken_timestamp_checked(self):
+        from voice.grounding_check import check_turn
+        ok = "At two zero zero zero zero six one seven one one two eight two eight."
+        bad = "At two zero zero zero zero six one seven one one two eight two nine."
+        self.assertEqual(check_turn(ok, self.R), [])
+        self.assertEqual(len(check_turn(bad, self.R)), 1)
+        self.assertEqual(len(check_turn("At 20000617112829 it said", self.R)), 1)
+
+    def test_url_checked(self):
+        from voice.grounding_check import check_turn
+        self.assertEqual(check_turn("See http://www.pets.com/ now", self.R), [])
+        self.assertEqual(len(check_turn("See http://www.cats.com/ now", self.R)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

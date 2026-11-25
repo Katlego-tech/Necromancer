@@ -64,6 +64,48 @@ class WaybackSummonTest(unittest.IsolatedAsyncioTestCase):
         names, inputs = await self.hand_over("wayback", "enron", "wayback", "matthew")
         self.assertIn("search_emails", names)
         self.assertIn("Enron Ghost", inputs[0])
+    async def _greeting_after_summon(self, start, target):
+        script = [fb.on_text("go", fb.completion_start(),
+                             fb.tool_use("summon_spirit", "tu-g", {"spirit": target}),
+                             fb.assistant_text("Summoning.", "FINAL", "END_TURN"), fb.completion_end())]
+        s, f, em = self.session(start, script)
+        await s.start()
+        await s.send_text("go")
+        await wait_for(lambda: len(f.streams) == 2)
+        await s.drain()
+        self.assertFalse(s._cold)
+        f.streams[1].push(fb.assistant_text("Hello, I am here.", "FINAL", "END_TURN"))
+        await wait_for(lambda: any(e["type"] == "transcript" and "Hello" in e.get("text", "") for e in em.events))
+        await asyncio.sleep(0.05)
+        self.assertEqual(s.grounding_violations, [])
+        self.assertFalse([e for e in em.events if e["type"] == "error"])
+        await s.close()
+
+    async def test_greeting_after_summon_is_not_a_violation_enron_to_wayback(self):
+        await self._greeting_after_summon("enron", "wayback")
+
+    async def test_greeting_after_summon_is_not_a_violation_wayback_to_enron(self):
+        await self._greeting_after_summon("wayback", "enron")
+
+    async def test_tool_call_in_flight_during_summon(self):
+        script = [fb.on_text("go", fb.completion_start(),
+                             fb.tool_use("read_snapshot", "tu-r2", {"url": URL, "timestamp": TS}),
+                             fb.tool_use("summon_spirit", "tu-s2", {"spirit": "enron"}),
+                             fb.assistant_text("Summoning.", "FINAL", "END_TURN"), fb.completion_end())]
+        s, f, em = self.session("wayback", script)
+        await s.start()
+        await s.send_text("go")
+        await wait_for(lambda: len(f.streams) == 2)
+        await s.drain()
+        self.assertEqual(s.spirit.id, "enron")
+        self.assertEqual([e["spirit"] for e in em.events if e["type"] == "spirit"], ["wayback", "enron"])
+        self.assertEqual(len(f.streams[0].tool_results()), 2)
+        self.assertEqual([e for e in em.events if e["type"] == "evidence"][0]["metadata"]["timestamp"], TS)
+        self.assertEqual(f.streams[1].tool_results(), [])
+        self.assertEqual(s.grounding_violations, [])
+        self.assertFalse([e for e in em.events if e["type"] == "error"])
+        await s.close()
+
     async def test_read_snapshot_reaches_model_and_panel_unchanged(self):
         script = [fb.on_text("page", fb.tool_use("read_snapshot", "tu-r", {"url": URL, "timestamp": TS}))]
         s, f, em = self.session("wayback", script)
