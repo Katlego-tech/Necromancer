@@ -16,6 +16,11 @@ from typing import List, Optional
 COLD = "The trail goes cold."
 _TOKEN = re.compile(r"[A-Za-z0-9_']+")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Markers that start a quoted or forwarded message inside a body. Text after one of these
+# was written by someone other than the email's own sender.
+_FWD_MARKER = re.compile(
+    r"-{3,}\s*Original Message\s*-{3,}|-{5,}\s*Forwarded by [^\n]*", re.I)
+_FWD_FROM = re.compile(r"^[ \t]*From:[ \t]*(.+?)[ \t]*$", re.I | re.M)
 
 
 def _cold() -> dict:
@@ -48,6 +53,36 @@ def _connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def _forward_info(body: str, excerpt: str) -> dict:
+    """Say whether the excerpt contains or follows a forwarded or quoted message marker.
+
+    Returns {} when it does not (or the excerpt cannot be located). Otherwise returns
+    forwarded=True, the verbatim marker text and, when the marker is followed by a
+    "From:" header, that header value verbatim. Words after the marker were not written
+    by the email's sender; words before it were. Nothing is inferred beyond these strings.
+    """
+    end = -1
+    for piece in excerpt.split(" ... "):
+        piece = piece.strip()
+        if len(piece) >= 15:
+            at = body.find(piece)
+            if at >= 0:
+                end = max(end, at + len(piece))
+    if end < 0:
+        return {}
+    marker = None
+    for m in _FWD_MARKER.finditer(body):
+        if m.start() < end:
+            marker = m
+    if marker is None:
+        return {}
+    info = {"forwarded": True, "forward_marker": marker.group(0).strip()}
+    header = _FWD_FROM.search(body, marker.end(), min(len(body), marker.end() + 400))
+    if header and header.start() < end:
+        info["forwarded_from"] = header.group(1).strip()
+    return info
+
+
 def _meta(r: sqlite3.Row, excerpt: Optional[str] = None) -> dict:
     m = {
         "evidence_id": r["evidence_id"],
@@ -60,6 +95,7 @@ def _meta(r: sqlite3.Row, excerpt: Optional[str] = None) -> dict:
     }
     if excerpt is not None:
         m["excerpt"] = excerpt
+        m.update(_forward_info(r["body"], excerpt))
     return m
 
 
@@ -102,9 +138,17 @@ def search_emails(db_path: str, query: str, limit: int = 5,
         return _cold()
     evidence: List[dict] = [_meta(r, r["excerpt"]) for r in rows]
     top = rows[0]
+    def _fwd_line(m: dict) -> str:
+        if not m.get("forwarded"):
+            return ""
+        who = f"; its From header reads: {m['forwarded_from']}" if m.get("forwarded_from") else ""
+        return (f"\nForwarded: the excerpt contains or follows a forwarded or quoted message "
+                f"marker ({m['forward_marker']}); words after that marker were not written by "
+                f"the email's sender{who}")
+
     content = "\n\n".join(
         f"{m['evidence_id']}\nFile: {m['source_path']}\nFrom: {m['sender']}\n"
-        f"Date: {m['date']}\nSubject: {m['subject']}\nExcerpt: {m['excerpt']}"
+        f"Date: {m['date']}\nSubject: {m['subject']}\nExcerpt: {m['excerpt']}{_fwd_line(m)}"
         for m in evidence)
     return {
         "source": top["evidence_id"],

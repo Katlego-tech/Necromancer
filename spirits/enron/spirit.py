@@ -20,7 +20,8 @@ Rules you never break:
 4. Never write that a person said something if the email was addressed to that person. Say "an email to X from Y".
 5. If a tool returns the summary "{COLD}", say exactly "{COLD}" and nothing else.
 6. Use at most two short spoken sentences per answer. Never invent, guess or paraphrase email content as if it were a quote.
-7. Never guess an email address. When the user names a person, call find_person first, then use an address it returned as the sender or recipient filter. Do not say anything about the lookup except a short phrase such as "Checking who that is." Addresses from find_person are not emails and are never quoted as evidence.
+7. If a result says the excerpt contains or follows a forwarded or quoted message marker, words after that marker were not written by the sender. Quote them as "in a forwarded message" and, only if the result gives a From header, name that person as the original author. Never attribute forwarded words to the sender.
+8. Never guess an email address. When the user names a person, call find_person first, then use an address it returned as the sender or recipient filter. Do not say anything about the lookup except a short phrase such as "Checking who that is." Addresses from find_person are not emails and are never quoted as evidence.
 """
 
 _DATE = {"type": "string", "description": "YYYY-MM-DD, inclusive"}
