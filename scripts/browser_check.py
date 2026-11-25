@@ -275,16 +275,22 @@ async def run_layout(args, out):
             await asyncio.sleep(4)  # let the scripted mock session fill transcript and evidence
             filled = await cdp.eval("document.getElementById('evidence-body').textContent.length")
             await cdp.shot(f"{out}/layout_{w}x{h}.png")
-            for st in STATES:
-                await cdp.eval(f"window.NecroMascotSlot.setState({json.dumps(st)}); window.NecroMascotSlot.setSpeakingLevel({1 if st == 'speaking' else 0}); true")
-                worst = {"hits": [], "painted": 0}
-                for _ in range(4):
-                    await asyncio.sleep(0.25)
-                    r = await cdp.eval(OVERLAP_JS)
-                    if len(r["hits"]) > len(worst["hits"]) or not worst["painted"]:
-                        worst = r
-                results["rows"].append({"viewport": f"{w}x{h}", "state": st, "evidence_chars": filled,
-                                        "painted_elements": worst["painted"], "overlaps": sorted(set(worst["hits"]))})
+            for costume in ("enron", "wayback"):
+                if costume == "wayback":  # apply the committed Wayback costume to the mock page
+                    cfg = (ROOT / "mascot" / "costumes" / "wayback.json").read_text(encoding="utf-8")
+                    await cdp.eval(f"window.NecroMascotSlot.setAppearance({cfg}); true")
+                    await asyncio.sleep(1.5)
+                    await cdp.shot(f"{out}/layout_wayback_{w}x{h}.png")
+                for st in STATES:
+                    await cdp.eval(f"window.NecroMascotSlot.setState({json.dumps(st)}); window.NecroMascotSlot.setSpeakingLevel({1 if st == 'speaking' else 0}); true")
+                    worst = {"hits": [], "painted": 0}
+                    for _ in range(4):
+                        await asyncio.sleep(0.25)
+                        r = await cdp.eval(OVERLAP_JS)
+                        if len(r["hits"]) > len(worst["hits"]) or not worst["painted"]:
+                            worst = r
+                    results["rows"].append({"viewport": f"{w}x{h}", "costume": costume, "state": st, "evidence_chars": filled,
+                                            "painted_elements": worst["painted"], "overlaps": sorted(set(worst["hits"]))})
         await cdp.send("Emulation.setDeviceMetricsOverride", width=1280, height=800, deviceScaleFactor=1, mobile=False)
         await cdp.send("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
         await navigate(cdp, base)

@@ -45,7 +45,7 @@ Real sprite swaps: none yet.
 
 - The eye mask has small stray specks near the top corners of each eye box; they show as faint dots under some palettes.
 - Lapels and the paper prop are rough overlays and do not follow the cloak.
-- The Wayback palette is labelled `era_inspired`; it is not tied to any cached snapshot.
+- The Wayback palette is derived by `python -m mascot.tools.snapshot_palette` from the colours written in the raw HTML of the demo snapshot (bgcolor/text/link attributes, inline styles, `<style>` blocks). It cannot see external stylesheets, images or computed styles. If a page yields fewer than two usable colours the costume stays `era_inspired` with no snapshot reference.
 - Body tint multiplies the whole sprite, so non-white body colours also tint the outline slightly.
 
 ## Future artwork needed

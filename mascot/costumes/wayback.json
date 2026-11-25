@@ -3,10 +3,20 @@
   "base": "little_necromancer",
   "renderer": "2d",
   "costume": "retro_web_era",
-  "label": "Wayback Medium (era-inspired)",
-  "palette": { "body": "#F3F0FF", "trim": "#8A6ED6", "eyes": "#7DF9FF" },
-  "props": ["browser_halo", "pixel_accents"],
+  "label": "Wayback Medium (palette from 20000617112828)",
+  "palette": {
+    "body": "#FFFFCC",
+    "trim": "#99CC33",
+    "eyes": "#FFCC00"
+  },
+  "props": [
+    "browser_halo",
+    "pixel_accents"
+  ],
   "animation": "shapeshift",
   "reduced_motion": false,
-  "era_inspired": true
+  "snapshot": {
+    "url": "http://www.pets.com/",
+    "timestamp": "20000617112828"
+  }
 }

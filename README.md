@@ -31,6 +31,12 @@ A 2D white ghost, "The Little Necromancer". The mascot is 2D for the hackathon; 
 - **Third-party data:** the [CMU Enron Email Dataset](https://www.cs.cmu.edu/~enron/) (May 7, 2015 version). It is not included in this repository. See the privacy note below.
 - **Mascot artwork:** the reference images in the repo root. **TO CONFIRM:** record how they were made (tool, author, terms of use) before submission.
 
+## Wayback demo snapshot provenance
+- **Page:** `http://www.pets.com/` (Pets.com home page, June 2000), served by the Wayback Machine at timestamp `20000617112828` (requested and served timestamps were identical).
+- **How it was chosen:** `scripts/prewarm_wayback.py --probe` made one capture listing and one or two reads per candidate (pets.com 1999 and 2000, altavista.com 1997 and 1998, geocities.com 1998). The pets.com June 2000 page gave short headline-and-blurb text that works as a spoken answer. The 1999 pets.com capture is mostly navigation links.
+- **Cache:** `data/wayback/` is gitignored; rebuild it with `scripts/prewarm_wayback.py --site http://www.pets.com/ --timestamp 20000617112828`.
+- **Costume:** `mascot/costumes/wayback.json` takes its palette from this snapshot's HTML colours and records the same URL and timestamp.
+
 ## Privacy note on the Enron data
 
 The dataset was made public during a federal investigation and contains real people's email. Many of the people in it were not involved in any wrongdoing. The CMU distributor asks users to be sensitive to their privacy. This project quotes emails only as historical evidence, and the Enron Ghost should focus on the executives and events in the public record.

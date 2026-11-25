@@ -29,11 +29,17 @@ class CostumeFiles(unittest.TestCase):
                 self.assertEqual(appearance.validate(json.load(open(p))), [])
                 appearance.load_costume(p)
 
-    def test_wayback_is_labelled_era_inspired(self):
+    def test_wayback_is_traceable_or_labelled_era_inspired(self):
         cfg = appearance.load_costume(os.path.join(ROOT, "costumes", "wayback.json"))
-        self.assertIs(cfg["era_inspired"], True)
-        self.assertNotIn("snapshot", cfg)
-
+        if "snapshot" in cfg:
+            snap = cfg["snapshot"]
+            readme = open(os.path.join(ROOT, "..", "README.md"), encoding="utf-8").read()
+            self.assertRegex(snap["timestamp"], r"^\d{14}$")
+            self.assertIn(snap["timestamp"], readme)
+            self.assertIn(snap["url"], readme)
+            self.assertIn(snap["timestamp"], cfg["label"])
+        else:
+            self.assertIs(cfg["era_inspired"], True)
     def test_grid_is_amber_with_ring_and_glyph(self):
         cfg = appearance.load_costume(os.path.join(ROOT, "costumes", "grid.json"))
         self.assertEqual(cfg["palette"]["eyes"].upper(), "#FFB000")
